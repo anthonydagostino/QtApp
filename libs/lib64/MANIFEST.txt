@@ -1,0 +1,35 @@
+headlessQtApp runtime manifest
+built: 2026-10-06T20:35:50Z on Red Hat Enterprise Linux release 9.8 (Plow), glibc 2.34, g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14.0.1)
+Qt: Qt 6.6.0 (x86_64-little_endian-lp64 shared (dynamic)
+
+libs/lib64 (every library except glibc; the loader finds them by exactly these names):
+  libQt6Concurrent.so.6        <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Concurrent.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6Core.so.6              <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Core.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6Gui.so.6               <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Gui.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6Network.so.6           <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Network.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6PrintSupport.so.6      <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6PrintSupport.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6Widgets.so.6           <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Widgets.so.6.6.0 (Qt 6.6.0 SDK)
+  libQt6Xml.so.6               <- /work/qt-sdk/6.6.0/gcc_64/lib/libQt6Xml.so.6.6.0 (Qt 6.6.0 SDK)
+  libgcc_s.so.1                <- /usr/lib64/libgcc_s-11-20240719.so.1 (libgcc-11.5.0-14.0.1.el9.x86_64)
+  libglib-2.0.so.0             <- /usr/lib64/libglib-2.0.so.0.6800.4 (glib2-2.68.4-19.el9_8.10.x86_64)
+  libgthread-2.0.so.0          <- /usr/lib64/libgthread-2.0.so.0.6800.4 (glib2-2.68.4-19.el9_8.10.x86_64)
+  libicudata.so.67             <- /usr/lib64/libicudata.so.67.1 (libicu-67.1-10.el9_6.x86_64)
+  libicui18n.so.67             <- /usr/lib64/libicui18n.so.67.1 (libicu-67.1-10.el9_6.x86_64)
+  libicuuc.so.67               <- /usr/lib64/libicuuc.so.67.1 (libicu-67.1-10.el9_6.x86_64)
+  libpcre.so.1                 <- /usr/lib64/libpcre.so.1.2.12 (pcre-8.44-4.el9.x86_64)
+  libstdc++.so.6               <- /usr/lib64/libstdc++.so.6.0.29 (libstdc++-11.5.0-14.0.1.el9.x86_64)
+
+plugins:
+  plugins/imageformats/libqgif.so
+  plugins/imageformats/libqico.so
+  plugins/imageformats/libqjpeg.so
+  plugins/platforms/libqminimal.so
+  plugins/platforms/libqoffscreen.so
+
+fonts:
+  DejaVuSans-Bold.ttf
+  DejaVuSans.ttf
+
+taken from the target machine (glibc only):
+  libm.so.6 => /lib64/libm.so.6
+  libc.so.6 => /lib64/libc.so.6

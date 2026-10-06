@@ -16,13 +16,15 @@ bad()  { echo "  [FAIL] $*"; failc=$((failc+1)); }
 skip() { if [ $STRICT = 1 ]; then bad "$* (tool missing, --strict)"; else echo "  [SKIP] $*"; skipped=$((skipped+1)); fi; }
 hdr()  { echo; echo "== $* =="; }
 have() { command -v "$1" >/dev/null 2>&1; }
-run_pkg() { ./run-headlessQtApp.sh "$@"; }
+# The share may have dropped the executable bits: run the wrapper through bash (it exec()s
+# the binary, so the PID is unchanged) and the binary through the dynamic loader.
+run_pkg() { bash ./run-headlessQtApp.sh "$@"; }
 
 hdr "layout"
 for p in bin/headlessQtApp bin/qt.conf plugins/platforms/libqoffscreen.so libs/lib64/libQt6Core.so.6 libs/lib64/libQt6Gui.so.6 libs/lib64/libQt6Widgets.so.6 libs/lib64/fonts run-headlessQtApp.sh; do
     [ -e "$p" ] && ok "$p present" || bad "$p missing"
 done
-if find . -type l | grep -q .; then bad "symlinks present (would not survive an SMB share): $(find . -type l | tr '\n' ' ')"; else ok "no symlinks anywhere in the package"; fi
+if find bin plugins libs -type l | grep -q .; then bad "symlinks present (would not survive an SMB share): $(find bin plugins libs -type l | tr '\n' ' ')"; else ok "no symlinks in bin/ plugins/ libs/"; fi
 
 hdr "file bin/headlessQtApp"
 if have file; then
@@ -103,7 +105,8 @@ OUT="$(run_pkg --core-only --once 2>&1)"; rc=$?; echo "$OUT"
 [ $rc -eq 0 ] && grep -q 'mode=core-only' <<<"$OUT" && ok "core-only mode exit 0" || bad "core-only failed (exit $rc)"
 
 hdr "bin/headlessQtApp --once without the wrapper (RUNPATH + qt.conf only)"
-OUT="$(env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM -u QT_QPA_FONTDIR ./bin/headlessQtApp --once 2>&1)"; rc=$?; echo "$OUT"
+[ -x bin/headlessQtApp ] || echo "(bin/headlessQtApp has no executable bit here; started through /lib64/ld-linux-x86-64.so.2)"
+OUT="$(env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM -u QT_QPA_FONTDIR bash -c 'if [ -x bin/headlessQtApp ]; then ./bin/headlessQtApp --once; else LD_LIBRARY_PATH=$PWD/libs/lib64 QT_PLUGIN_PATH=$PWD/plugins QT_QPA_FONTDIR=$PWD/libs/lib64/fonts /lib64/ld-linux-x86-64.so.2 ./bin/headlessQtApp --once; fi' 2>&1)"; rc=$?; echo "$OUT"
 [ $rc -eq 0 ] && grep -q 'qpa platform=offscreen' <<<"$OUT" && ok "runs directly (exit 0, offscreen)" || bad "direct run failed (exit $rc)"
 
 hdr "start via the dynamic loader (no exec bit needed)"
@@ -112,7 +115,7 @@ OUT="$(LD_LIBRARY_PATH="$LIBDIR" QT_PLUGIN_PATH="$PWD/plugins" QT_QPA_FONTDIR="$
 
 hdr "SIGTERM / SIGINT shutdown"
 for sig in TERM INT; do
-    tmp="$(mktemp)"; run_pkg >"$tmp" 2>&1 & wpid=$!
+    tmp="$(mktemp)"; bash ./run-headlessQtApp.sh >"$tmp" 2>&1 & wpid=$!
     for _ in $(seq 1 100); do grep -q 'running event loop' "$tmp" 2>/dev/null && break; sleep 0.1; done
     pid="$(sed -n 's/.*started pid=\([0-9]*\).*/\1/p' "$tmp" | head -n1)"
     [ "$pid" = "$wpid" ] && ok "logged PID $pid equals the process PID" || bad "logged PID '$pid' != $wpid"

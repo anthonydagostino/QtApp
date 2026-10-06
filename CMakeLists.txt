@@ -89,4 +89,4 @@ target_link_options(headlessQtApp PRIVATE "LINKER:--enable-new-dtags")
 install(TARGETS headlessQtApp RUNTIME DESTINATION bin)
 # qt.conf next to the binary makes Qt find <pkg>/plugins and <pkg>/libs/lib64/fonts
 # without any environment variable.
-install(FILES packaging/qt.conf DESTINATION bin)
+install(FILES tools/packaging/qt.conf DESTINATION bin)

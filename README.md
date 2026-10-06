@@ -130,3 +130,32 @@ readelf --version-info libs/lib64/libQt6Core.so.6 | grep Qt_6_PRIVATE_API
 checks without them.
 
 ## What was tested
+
+The binaries committed here were produced by `tools/build-rhel9.sh` + `tools/package.sh`
+with these inputs, and checked as follows:
+
+- **Qt 6.6.0** was built from the `qtbase` **v6.6.0** tag (commit
+  `33f5e985e480283bb0ca9dea5f82643e825ba87c`) with the RHEL 9 GCC 11.5 toolchain, because
+  the official Qt 6.6.0 installer/aqt package could not be downloaded in the build
+  environment (download.qt.io and its mirrors were blocked). No other Qt version was
+  substituted. The resulting `libQt6Core.so.6` reports `Qt 6.6.0 (x86_64-little_endian-lp64
+  shared (dynamic) release build; by GCC 11.5.0)` and exports `Qt_6_PRIVATE_API`; compared
+  with the official Qt 6.6.0 `libQt6Core.so.6` (PySide6 6.6.0 wheel) it has identical ELF
+  version nodes and the identical set of 883 `Qt_6_PRIVATE_API` symbols.
+- **Build container**: Red Hat's registries were blocked too, so the builder image was made
+  from `docker.io/oraclelinux:9` (Oracle Linux 9.8, RHEL 9 binary compatible: glibc 2.34,
+  GCC 11.5.0; `/etc/redhat-release` reads "Red Hat Enterprise Linux release 9.8 (Plow)").
+  `tools/Containerfile` defaults to `registry.access.redhat.com/ubi9/ubi` and works with it.
+- `validate.sh --strict` inside the builder: 40/40 passed.
+- The tree was mounted **read-only, with every executable bit removed, into a pristine
+  network-less `redhat/ubi9` (UBI 9.8) container** with no `file`, `readelf`, ICU, glib
+  or fonts installed, simulating VM2 reading the share: `bash validate.sh` passed 39/39
+  (3 presentational checks skipped for the missing tools). That covers `--once`,
+  `--screenshot` (a 640x400 PNG with rendered text), `--core-only`, starting the binary
+  through the dynamic loader without exec bits, and SIGTERM/SIGINT shutdown with exit 0.
+- `redhat/ubi9-micro` (no libstdc++, no glib2 at all): `--once` and `--screenshot` exit 0.
+- **Not tested**: attaching Squish for Qt 8.1.0 (not available here). `check-deps.sh
+  /path/to/squish` on VM2 will list anything Squish's own binaries still need from VM2.
+
+One harmless line may appear on stderr with the offscreen platform:
+`This plugin does not support propagateSizeHints()`.

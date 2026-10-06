@@ -107,8 +107,9 @@ for f in plugins/*/*.so "$LIB"/*.so*; do resolve_into_lib "$f"; done
 for f in "$LIB"/*.so*; do resolve_into_lib "$f"; done
 
 # Fonts for the offscreen platform (no fontconfig on the target is required).
-for f in /usr/share/fonts/dejavu/DejaVuSans.ttf /usr/share/fonts/dejavu/DejaVuSans-Bold.ttf /usr/share/fonts/dejavu/DejaVuSansMono.ttf; do
-    [ -f "$f" ] && install -m 0644 "$f" "$LIB/fonts/"
+for name in DejaVuSans.ttf DejaVuSans-Bold.ttf DejaVuSansMono.ttf; do
+    f="$(find /usr/share/fonts -name "$name" -print -quit 2>/dev/null || true)"
+    [ -n "$f" ] && install -m 0644 "$f" "$LIB/fonts/"
 done
 ls "$LIB"/fonts/*.ttf >/dev/null 2>&1 || fail "no fonts found (install dejavu-sans-fonts in the builder image)"
 
