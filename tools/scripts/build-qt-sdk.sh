@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build Qt 6.6.0 (qtbase: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport and
-# the offscreen platform plugin; no X11/Wayland/OpenGL/DBus) from the v6.6.0 sources with
+# the offscreen + xcb platform plugins; no Wayland/OpenGL/DBus) from the v6.6.0 sources with
 # the RHEL 9 GCC toolchain and install it as a conventional "gcc_64" SDK layout. Runs
 # inside the builder container.
 #
@@ -45,7 +45,7 @@ cd "$BUILD"
     -nomake examples -nomake tests \
     -no-dbus \
     -no-opengl -no-feature-vulkan \
-    -no-xcb -no-feature-xlib -no-feature-xkbcommon \
+    -xcb -xkbcommon \
     -no-eglfs -no-feature-egl -no-linuxfb -no-feature-vnc \
     -no-libudev -no-evdev -no-feature-libinput -no-feature-tslib -no-feature-mtdev \
     -no-cups \

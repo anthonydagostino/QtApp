@@ -224,9 +224,13 @@ int main(int argc, char *argv[])
     const QCommandLineOption screenshotOption(QStringLiteral("screenshot"),
         QStringLiteral("Render the main window to <file> (PNG) and exit; self-test of offscreen rendering."),
         QStringLiteral("file"));
+    const QCommandLineOption desktopShotOption(QStringLiteral("desktop-screenshot"),
+        QStringLiteral("Grab the primary screen (QScreen::grabWindow(0), as Squish does) to <file> (PNG) and exit."),
+        QStringLiteral("file"));
     parser.addOption(onceOption);
     parser.addOption(coreOnlyOption);
     parser.addOption(screenshotOption);
+    parser.addOption(desktopShotOption);
     parser.process(*app);
 
     if (!installSignalHandlers()) {
@@ -274,7 +278,27 @@ int main(int argc, char *argv[])
                     .arg(window->width()).arg(window->height()));
     }
 
-    if (parser.isSet(screenshotOption) && window) {
+    if (parser.isSet(desktopShotOption) && window) {
+        const QString file = parser.value(desktopShotOption);
+        // Give the window a few event-loop turns to be mapped and painted on the screen.
+        QTimer::singleShot(300, app.get(), [file]() {
+            QScreen *screen = QGuiApplication::primaryScreen();
+            if (!screen) {
+                logLine(QStringLiteral("desktop screenshot FAILED: no primary QScreen"));
+                QCoreApplication::exit(2);
+                return;
+            }
+            const QPixmap pixmap = screen->grabWindow(0);
+            const bool ok = !pixmap.isNull() && pixmap.save(file, "PNG");
+            logLine(QStringLiteral("desktop screenshot of screen '%1' %2x%3 -> %4: %5")
+                        .arg(screen->name()).arg(pixmap.width()).arg(pixmap.height())
+                        .arg(file, ok ? QStringLiteral("saved") : QStringLiteral("FAILED")));
+            QCoreApplication::exit(ok ? 0 : 2);
+        });
+    } else if (parser.isSet(desktopShotOption)) {
+        std::fprintf(stderr, "headlessQtApp: --desktop-screenshot is not available with --core-only\n");
+        return 2;
+    } else if (parser.isSet(screenshotOption) && window) {
         const QString file = parser.value(screenshotOption);
         QTimer::singleShot(0, app.get(), [&window, file]() {
             const QPixmap pixmap = window->grab();

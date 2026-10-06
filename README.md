@@ -4,14 +4,17 @@ A self-contained Qt 6.6.0 application tree for **RHEL 9 x86_64** that Squish for
 can attach to (`startaut`), inspect and screenshot on a machine **without a display and
 without installing anything**. Put this folder on the file share; run it from the other VM.
 
-- `QApplication` on Qt's **offscreen** platform plugin: real widgets exist (a main window
-  with labels, a line edit and buttons), Squish can find them and take screenshots, but no
-  X11, Wayland, OpenGL or display is involved. `--core-only` runs it as a plain
-  `QCoreApplication` instead.
+- `QApplication` with a real widget tree (a main window with labels, a line edit and
+  buttons) that Squish can find, drive and screenshot. Two ways to run without a display:
+  - **offscreen** (default): Qt's offscreen platform plugin, no X server at all;
+  - **`--xvfb`**: the bundled virtual X server (Xvfb) is started on a free display and the
+    application runs on the **xcb** platform against it. This gives Squish a real X
+    display, which is what its desktop screenshots on Linux normally expect.
+  `--core-only` runs it as a plain `QCoreApplication` instead (nothing to screenshot).
 - Built against **exactly Qt 6.6.0** whose `libQt6Core.so.6` exports `Qt_6_PRIVATE_API`
   (required by the Squish Qt wrapper built with Qt 6.6.0). The build refuses any other Qt.
-- Logs its startup and PID to stdout, runs until `SIGTERM`/`SIGINT` (exit 0), supports
-  `--once` and `--screenshot <file>`.
+- Logs its startup, PID and screens to stdout, runs until `SIGTERM`/`SIGINT` (exit 0),
+  supports `--once`, `--screenshot <file>` and `--desktop-screenshot <file>`.
 - **Everything except glibc is in the tree.** No symlinks, so it survives SMB shares.
 
 ## Layout (this folder is what goes on the share)
@@ -22,14 +25,18 @@ headlessQtApp/
 │   ├── headlessQtApp            ELF x86_64, RUNPATH $ORIGIN/../libs/lib64
 │   └── qt.conf                  tells Qt where plugins/ and libs/lib64/fonts are
 ├── plugins/
-│   ├── platforms/libqoffscreen.so   (+ libqminimal.so)
+│   ├── platforms/libqoffscreen.so  libqxcb.so  libqminimal.so
 │   └── imageformats/*.so
+├── xvfb/
+│   ├── Xvfb, xkbcomp                virtual X server for --xvfb mode
+│   └── xkb/                         XKB keyboard data
 ├── libs/lib64/                  EVERY shared library except glibc, named by SONAME:
 │   ├── libQt6Core.so.6  libQt6Gui.so.6  libQt6Widgets.so.6  libQt6Network.so.6
 │   ├── libQt6Xml.so.6  libQt6Concurrent.so.6  libQt6PrintSupport.so.6
 │   ├── libicui18n.so.67  libicuuc.so.67  libicudata.so.67
 │   ├── libglib-2.0.so.0  libgthread-2.0.so.0  libpcre.so.1
 │   ├── libstdc++.so.6  libgcc_s.so.1
+│   ├── libxcb*.so  libX11.so.6  libxkbcommon*.so  libXfont2, libpixman ... (xcb plugin + Xvfb)
 │   ├── fonts/DejaVuSans*.ttf    fonts for offscreen rendering (no fontconfig needed)
 │   └── MANIFEST.txt             where every file came from
 ├── run-headlessQtApp.sh         the entry point (use this as the AUT for startaut)
@@ -51,9 +58,12 @@ binary through the system loader if it is missing.
 
 ```bash
 cd /mnt/share/headlessQtApp
-./run-headlessQtApp.sh                 # runs until SIGTERM/SIGINT
+./run-headlessQtApp.sh                 # offscreen platform, runs until SIGTERM/SIGINT
+./run-headlessQtApp.sh --xvfb          # bundled Xvfb + xcb platform, runs until SIGTERM/SIGINT
 ./run-headlessQtApp.sh --once          # logs startup, exits 0
-./run-headlessQtApp.sh --screenshot /tmp/shot.png   # renders the window to a PNG, exits 0
+./run-headlessQtApp.sh --screenshot /tmp/shot.png          # QWidget::grab() of the window -> PNG
+./run-headlessQtApp.sh --desktop-screenshot /tmp/desk.png  # QScreen::grabWindow(0), what Squish does
+./run-headlessQtApp.sh --xvfb --desktop-screenshot /tmp/desk.png
 ./run-headlessQtApp.sh --core-only     # QCoreApplication only (nothing to screenshot)
 ./validate.sh                          # automated checks
 ./check-deps.sh /mnt/share/squish      # also checks a Squish installation's binaries
@@ -65,6 +75,7 @@ Example output:
 2026-10-06T14:00:00.123 headlessQtApp[4711]: started pid=4711 version=1.0.0 mode=widgets/offscreen
 2026-10-06T14:00:00.124 headlessQtApp[4711]: qt runtime=6.6.0 built-against=6.6.0 core-library=/mnt/share/headlessQtApp/libs/lib64/libQt6Core.so.6
 2026-10-06T14:00:00.130 headlessQtApp[4711]: qpa platform=offscreen plugin-paths=/mnt/share/headlessQtApp/plugins:...
+2026-10-06T14:00:00.131 headlessQtApp[4711]: screens=1 primary= 800x800
 2026-10-06T14:00:00.140 headlessQtApp[4711]: main window 'mainWindow' shown (640x400)
 2026-10-06T14:00:00.140 headlessQtApp[4711]: running event loop until SIGTERM or SIGINT
 ```
@@ -85,8 +96,23 @@ The wrapper sets `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM=offscreen
 `startaut` injects the Squish Qt wrapper into the process; the wrapper finds the matching
 Qt 6.6.0 libraries in `libs/lib64` through `LD_LIBRARY_PATH`. Objects are named
 `mainWindow`, `centralWidget`, `titleLabel`, `statusLabel`, `inputLineEdit`,
-`counterLabel`, `clickButton`, `quitButton`. Screenshots work through Qt's own grabbing
-on the offscreen platform (`--screenshot` proves that path without Squish).
+`counterLabel`, `clickButton`, `quitButton`.
+
+**Screenshots.** Squish's desktop screenshot (`Wrapper::desktopImage`) grabs the primary
+`QScreen`. If Squish reports `Cannot take screenshot without a primary QScreen`, first look at
+the AUT's own stdout: it must say `mode=widgets/offscreen` (not `core-only`) and
+`screens=1 primary=...`. `./run-headlessQtApp.sh --desktop-screenshot /tmp/d.png` performs
+exactly that grab without Squish. If Squish still refuses the offscreen screen, start the
+AUT with `--xvfb`: the bundled Xvfb gives it a real X display (`qpa platform=xcb`), the
+normal situation for Squish screenshots on Linux:
+
+```bash
+/mnt/share/squish/bin/startaut --port=4322 /mnt/share/headlessQtApp/run-headlessQtApp.sh --xvfb
+```
+
+`--xvfb` needs a writable `/tmp` on VM2 (the X socket and lock file live there); display
+numbers `:99` and up are tried. The wrapper stays alive as the parent of Xvfb and the AUT
+in this mode (the AUT's PID is the one it logs) and stops Xvfb when the AUT exits.
 
 Before the first Squish run, run `./check-deps.sh /mnt/share/squish` on VM2: it prints any
 library that Squish's own binaries would need from VM2 and cannot find. (Squish for Qt is

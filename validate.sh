@@ -24,7 +24,7 @@ hdr "layout"
 for p in bin/headlessQtApp bin/qt.conf plugins/platforms/libqoffscreen.so libs/lib64/libQt6Core.so.6 libs/lib64/libQt6Gui.so.6 libs/lib64/libQt6Widgets.so.6 libs/lib64/fonts run-headlessQtApp.sh; do
     [ -e "$p" ] && ok "$p present" || bad "$p missing"
 done
-if find bin plugins libs -type l | grep -q .; then bad "symlinks present (would not survive an SMB share): $(find bin plugins libs -type l | tr '\n' ' ')"; else ok "no symlinks in bin/ plugins/ libs/"; fi
+if find bin plugins libs xvfb -type l 2>/dev/null | grep -q .; then bad "symlinks present (would not survive an SMB share): $(find bin plugins libs xvfb -type l 2>/dev/null | tr '\n' ' ')"; else ok "no symlinks in bin/ plugins/ libs/ xvfb/"; fi
 
 hdr "file bin/headlessQtApp"
 if have file; then
@@ -99,6 +99,35 @@ shot="$(mktemp -u).png"
 OUT="$(run_pkg --screenshot "$shot" 2>&1)"; rc=$?; echo "$OUT"
 [ $rc -eq 0 ] && [ -s "$shot" ] && [ "$(head -c 8 "$shot" | od -An -c | tr -d ' \n')" = '211PNG\r\n032\n' ] && ok "PNG screenshot written ($(stat -c %s "$shot") bytes)" || bad "screenshot failed (exit $rc)"
 rm -f "$shot"
+
+hdr "./run-headlessQtApp.sh --desktop-screenshot (QScreen::grabWindow(0) on the offscreen screen, as Squish does)"
+shot="$(mktemp -u).png"
+OUT="$(run_pkg --desktop-screenshot "$shot" 2>&1)"; rc=$?; echo "$OUT"
+[ $rc -eq 0 ] && [ -s "$shot" ] && ok "desktop screenshot via primary QScreen written ($(stat -c %s "$shot") bytes)" || bad "desktop screenshot failed (exit $rc)"
+rm -f "$shot"
+
+if [ -f xvfb/Xvfb ] && [ -f plugins/platforms/libqxcb.so ]; then
+    hdr "./run-headlessQtApp.sh --xvfb --desktop-screenshot (bundled Xvfb + xcb platform)"
+    shot="$(mktemp -u).png"
+    OUT="$(run_pkg --xvfb --desktop-screenshot "$shot" 2>&1)"; rc=$?; echo "$OUT"
+    grep -q 'qpa platform=xcb' <<<"$OUT" && ok "xcb platform on the bundled Xvfb" || bad "xcb platform not used"
+    [ $rc -eq 0 ] && [ -s "$shot" ] && ok "desktop screenshot on Xvfb written ($(stat -c %s "$shot") bytes)" || bad "Xvfb desktop screenshot failed (exit $rc)"
+    grep -qiE 'could not|failed to|error' <<<"$OUT" && bad "errors in --xvfb output" || ok "no errors in --xvfb output"
+    rm -f "$shot"
+    ls /tmp/.X11-unix/ 2>/dev/null | grep -q . && echo "(note: other X sockets present in /tmp/.X11-unix: $(ls /tmp/.X11-unix | tr '\n' ' '))"
+    hdr "--xvfb: SIGTERM shutdown stops both the application and Xvfb"
+    tmp="$(mktemp)"; bash ./run-headlessQtApp.sh --xvfb >"$tmp" 2>&1 & wpid=$!
+    for _ in $(seq 1 100); do grep -q 'running event loop' "$tmp" 2>/dev/null && break; sleep 0.1; done
+    xpid="$(sed -n 's/.*Xvfb pid=\([0-9]*\).*/\1/p' "$tmp" | head -n1)"
+    sleep 0.3; kill -TERM "$wpid" 2>/dev/null
+    rc=1; for _ in $(seq 1 100); do if ! kill -0 "$wpid" 2>/dev/null; then wait "$wpid"; rc=$?; break; fi; sleep 0.1; done
+    sleep 0.5
+    [ $rc -eq 0 ] && grep -q 'received SIGTERM' "$tmp" && ok "application exited 0 on SIGTERM" || { cat "$tmp"; bad "application exit $rc"; }
+    if [ -n "$xpid" ] && kill -0 "$xpid" 2>/dev/null; then bad "Xvfb (pid $xpid) still running"; kill "$xpid"; else ok "Xvfb stopped"; fi
+    rm -f "$tmp"
+else
+    echo; echo "== --xvfb mode not available (no xvfb/Xvfb or plugins/platforms/libqxcb.so) =="
+fi
 
 hdr "./run-headlessQtApp.sh --core-only --once"
 OUT="$(run_pkg --core-only --once 2>&1)"; rc=$?; echo "$OUT"

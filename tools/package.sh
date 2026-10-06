@@ -8,6 +8,7 @@
 #                                                            Qt, ICU, glib2, pcre, libstdc++, libgcc_s)
 #   libs/lib64/fonts/*.ttf                                  (fonts for offscreen rendering)
 #   libs/lib64/MANIFEST.txt
+#   xvfb/Xvfb, xvfb/xkbcomp, xvfb/xkb/                      (virtual X server for --xvfb mode)
 #
 # No symlinks are created: every library is a real file named exactly as the dynamic
 # loader asks for it (its SONAME), so the tree survives SMB/Windows file shares.
@@ -58,20 +59,31 @@ GLIBC_RE='^(linux-vdso\.so\.1|ld-linux-x86-64\.so\.2|libc\.so\.6|libm\.so\.6|lib
 
 LIB="libs/lib64"
 log "assembling bin/ plugins/ $LIB/"
-rm -rf bin plugins libs
-mkdir -p bin plugins/platforms plugins/imageformats "$LIB/fonts"
+rm -rf bin plugins libs xvfb
+mkdir -p bin plugins/platforms plugins/imageformats "$LIB/fonts" xvfb
 
 install -m 0755 dist/bin/headlessQtApp bin/headlessQtApp
 install -m 0644 dist/bin/qt.conf bin/qt.conf
 
 # Qt plugins: platform plugins (offscreen, minimal) and image formats.
-for f in "$QT_ROOT"/plugins/platforms/libqoffscreen.so "$QT_ROOT"/plugins/platforms/libqminimal.so; do
+for f in "$QT_ROOT"/plugins/platforms/libqoffscreen.so "$QT_ROOT"/plugins/platforms/libqminimal.so "$QT_ROOT"/plugins/platforms/libqxcb.so; do
     [ -f "$f" ] && install -m 0755 "$f" plugins/platforms/
 done
 for f in "$QT_ROOT"/plugins/imageformats/*.so; do
     [ -f "$f" ] && install -m 0755 "$f" plugins/imageformats/
 done
 [ -f plugins/platforms/libqoffscreen.so ] || fail "offscreen platform plugin missing in $QT_ROOT/plugins/platforms"
+[ -f plugins/platforms/libqxcb.so ] || log "WARNING: xcb platform plugin not in the SDK; --xvfb mode will not be available"
+
+# Virtual X server for --xvfb mode: Xvfb, xkbcomp and the XKB keyboard data.
+if [ -x /usr/bin/Xvfb ]; then
+    install -m 0755 /usr/bin/Xvfb xvfb/Xvfb
+    [ -x /usr/bin/xkbcomp ] && install -m 0755 /usr/bin/xkbcomp xvfb/xkbcomp
+    [ -d /usr/share/X11/xkb ] && cp -rL /usr/share/X11/xkb xvfb/xkb && find xvfb/xkb -type d -exec chmod 0755 {} + && find xvfb/xkb -type f -exec chmod 0644 {} +
+    origin["xvfb/Xvfb"]="/usr/bin/Xvfb ($(rpm -qf /usr/bin/Xvfb 2>/dev/null))"
+else
+    log "WARNING: Xvfb not in the builder image; --xvfb mode will not be available"
+fi
 
 # Every Qt library of the SDK, under its SONAME, as a real file (Squish's wrapper may
 # load modules the application itself does not link).
@@ -103,6 +115,7 @@ resolve_into_lib() {
 }
 resolve_into_lib bin/headlessQtApp
 for f in plugins/*/*.so "$LIB"/*.so*; do resolve_into_lib "$f"; done
+for f in xvfb/Xvfb xvfb/xkbcomp; do [ -f "$f" ] && resolve_into_lib "$f"; done
 # second pass: dependencies of the libraries just added (e.g. libpcre for glib)
 for f in "$LIB"/*.so*; do resolve_into_lib "$f"; done
 
@@ -118,6 +131,7 @@ runpath_of() { local d; d="$(readelf -d "$1")"; sed -n 's/.*(R\(UN\)\?PATH) *Lib
 set_runpath() { [ "$(runpath_of "$1")" = "$2" ] || { patchelf --set-rpath "$2" "$1"; log "RUNPATH $1 -> $2"; }; }
 set_runpath bin/headlessQtApp '$ORIGIN/../libs/lib64'
 for f in plugins/*/*.so; do set_runpath "$f" '$ORIGIN/../../libs/lib64'; done
+for f in xvfb/Xvfb xvfb/xkbcomp; do [ -f "$f" ] && set_runpath "$f" '$ORIGIN/../libs/lib64'; done
 for f in "$LIB"/*.so*; do set_runpath "$f" '$ORIGIN'; done
 
 # Strip what we built (SONAMEs, symbol versions untouched); system libraries are already stripped.
@@ -135,14 +149,15 @@ for f in "$LIB"/libQt6*.so.6; do strip --strip-unneeded "$f"; done
     echo
     echo "plugins:"; ls plugins/*/*.so | sed 's/^/  /'
     echo; echo "fonts:"; ls "$LIB"/fonts | sed 's/^/  /'
+    if [ -f xvfb/Xvfb ]; then echo; echo "xvfb/:"; echo "  Xvfb <- ${origin[xvfb/Xvfb]}"; [ -f xvfb/xkbcomp ] && echo "  xkbcomp <- $(rpm -qf /usr/bin/xkbcomp 2>/dev/null)"; [ -d xvfb/xkb ] && echo "  xkb/ <- /usr/share/X11/xkb ($(rpm -qf /usr/share/X11/xkb 2>/dev/null | head -n1))"; fi
     echo; echo "taken from the target machine (glibc only):"
     LD_LIBRARY_PATH="$REPO_DIR/$LIB" ldd bin/headlessQtApp | awk '$3 ~ /^\/(usr\/)?lib64\// {print "  " $1 " => " $3}'
 } > "$LIB/MANIFEST.txt"
 chmod 0755 run-headlessQtApp.sh validate.sh check-deps.sh
 
-log "tree:"; find bin plugins libs -type f | sort | sed 's/^/    /'
-log "size: $(du -sh libs plugins bin | awk '{printf "%s %s  ", $1, $2}')"
-if find bin plugins libs -type l | grep -q .; then fail "symlinks present"; fi
+log "tree:"; find bin plugins libs xvfb -maxdepth 2 -type f | sort | sed 's/^/    /'
+log "size: $(du -sh libs plugins bin xvfb | awk '{printf "%s %s  ", $1, $2}')"
+if find bin plugins libs xvfb -type l | grep -q .; then fail "symlinks present: $(find bin plugins libs xvfb -type l | tr '\n' ' ')"; fi
 
 if [ "${SKIP_VALIDATION:-0}" != 1 ]; then
     ./validate.sh --strict "$REPO_DIR"

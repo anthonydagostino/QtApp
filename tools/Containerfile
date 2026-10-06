@@ -23,7 +23,8 @@ RUN set -eu; \
     rm -rf /tmp/build-support
 
 # GCC toolchain, CMake/Ninja, ELF tools, and the -devel packages Qt Core links against
-# (system zlib, glib2 and ICU; pcre2 is bundled into Qt Core by the Qt build).
+# (glib2, ICU, xcb/xkbcommon/X11 for the xcb platform plugin; zlib/pcre2/freetype are
+# bundled by the Qt build), plus Xvfb and the XKB data that get shipped in the tree.
 RUN dnf -y install \
         gcc gcc-c++ make cmake \
         binutils file findutils which diffutils patch \
@@ -32,6 +33,9 @@ RUN dnf -y install \
         glibc-langpack-en \
         zlib-devel glib2-devel libicu-devel pcre2-devel \
         dejavu-sans-fonts \
+        libxcb-devel xcb-util-image-devel xcb-util-renderutil-devel xcb-util-cursor-devel \
+        libxkbcommon-devel libX11-devel libX11-xcb \
+        xorg-x11-server-Xvfb xkeyboard-config xkbcomp \
     && dnf clean all
 
 # ninja-build lives in the CodeReady Builder repo (ubi-9-codeready-builder /
@@ -43,6 +47,16 @@ RUN set -u; \
     || dnf -y --enablerepo='ol9_codeready_builder' install ninja-build \
     || dnf -y --enablerepo='codeready-builder-for-rhel-9-x86_64-rpms' install ninja-build \
     || echo "WARNING: ninja-build not available; CMake will use Unix Makefiles"; \
+    dnf clean all
+
+# xcb-util / xkbcommon-x11 development packages for the Qt xcb platform plugin live in the
+# CodeReady Builder repository.
+RUN set -u; \
+    P="xcb-util-devel xcb-util-keysyms-devel xcb-util-wm-devel libxkbcommon-x11-devel"; \
+    dnf -y install $P \
+    || dnf -y --enablerepo='ubi-9-codeready-builder' install $P \
+    || dnf -y --enablerepo='ol9_codeready_builder' install $P \
+    || dnf -y --enablerepo='codeready-builder-for-rhel-9-x86_64-rpms' install $P; \
     dnf clean all
 
 # patchelf (EPEL). Only needed if the DT_RUNPATH set by CMake has to be rewritten.
