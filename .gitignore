@@ -1,0 +1,9 @@
+# build outputs
+/build/
+/dist/
+/out/
+# Qt 6.6.0 sources / SDK (cloned or built by build-rhel9.sh)
+/qt-src/
+/qt-sdk/
+# extra CA certificates copied in by build-rhel9.sh
+/build-support/ca-anchors/*.crt

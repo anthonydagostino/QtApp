@@ -1,0 +1,66 @@
+# Builder image for squish-anchor: RHEL 9 / UBI 9 userland with the GCC toolchain.
+#
+# Default base: Red Hat Universal Base Image 9. Any RHEL 9-compatible image may be
+# substituted with --build-arg BASE_IMAGE=... (e.g. docker.io/redhat/ubi9,
+# docker.io/oraclelinux:9) when registry.access.redhat.com is not reachable.
+#
+# The image contains the toolchain only. The Qt 6.6.0 SDK and the sources live in
+# bind mounts supplied by build-rhel9.sh (see README.md).
+ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi:latest
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="squish-anchor-builder" \
+      org.opencontainers.image.description="RHEL 9 / UBI 9 build environment for squish-anchor (Qt 6.6.0, GCC, CMake, C++17)"
+
+# Optional extra CA certificates (e.g. a corporate TLS-inspecting proxy). Any *.crt
+# placed in build-support/ca-anchors/ is added to the system trust store.
+COPY build-support/ /tmp/build-support/
+RUN set -eu; \
+    if ls /tmp/build-support/ca-anchors/*.crt >/dev/null 2>&1; then \
+        cp /tmp/build-support/ca-anchors/*.crt /etc/pki/ca-trust/source/anchors/; \
+        update-ca-trust; \
+    fi; \
+    rm -rf /tmp/build-support
+
+# GCC toolchain, CMake/Ninja, ELF tools, and the -devel packages Qt Core links against
+# (system zlib, glib2 and ICU; pcre2 is bundled into Qt Core by the Qt build).
+RUN dnf -y install \
+        gcc gcc-c++ make cmake \
+        binutils file findutils which diffutils patch \
+        tar gzip xz git \
+        python3 \
+        glibc-langpack-en \
+        zlib-devel glib2-devel libicu-devel pcre2-devel \
+    && dnf clean all
+
+# ninja-build lives in the CodeReady Builder repo (ubi-9-codeready-builder /
+# ol9_codeready_builder / codeready-builder-for-rhel-9-x86_64-rpms). Optional: the build
+# scripts fall back to "Unix Makefiles" when ninja is absent.
+RUN set -u; \
+    dnf -y install ninja-build \
+    || dnf -y --enablerepo='ubi-9-codeready-builder' install ninja-build \
+    || dnf -y --enablerepo='ol9_codeready_builder' install ninja-build \
+    || dnf -y --enablerepo='codeready-builder-for-rhel-9-x86_64-rpms' install ninja-build \
+    || echo "WARNING: ninja-build not available; CMake will use Unix Makefiles"; \
+    dnf clean all
+
+# patchelf (EPEL). Only needed if the DT_RUNPATH set by CMake has to be rewritten.
+# Tried in order: already-enabled repos, Oracle Linux EPEL, Fedora EPEL for RHEL 9.
+RUN set -eu; \
+    if ! dnf -y install patchelf; then \
+        if dnf -y install oracle-epel-release-el9 2>/dev/null; then \
+            dnf -y --enablerepo=ol9_developer_EPEL install patchelf; \
+        else \
+            dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+            && dnf -y install patchelf; \
+        fi; \
+    fi; \
+    dnf clean all; \
+    patchelf --version
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    SQUISH_ANCHOR_IN_CONTAINER=1
+
+WORKDIR /work
+CMD ["/bin/bash"]
