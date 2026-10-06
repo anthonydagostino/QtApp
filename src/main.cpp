@@ -27,6 +27,7 @@
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPixmap>
+#include <QScreen>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -260,6 +261,12 @@ int main(int argc, char *argv[])
         logLine(QStringLiteral("qpa platform=%1 plugin-paths=%2")
                     .arg(QGuiApplication::platformName(),
                          QCoreApplication::libraryPaths().join(QLatin1Char(':'))));
+        const QScreen *primary = QGuiApplication::primaryScreen();
+        logLine(QStringLiteral("screens=%1 primary=%2 %3x%4")
+                    .arg(QGuiApplication::screens().size())
+                    .arg(primary ? primary->name() : QStringLiteral("NONE"))
+                    .arg(primary ? primary->geometry().width() : 0)
+                    .arg(primary ? primary->geometry().height() : 0));
         window = makeWindow();
         window->show();
         logLine(QStringLiteral("main window '%1' shown (%2x%3)")
