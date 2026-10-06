@@ -51,10 +51,11 @@ hdr "ldd bin/squish-anchor"
 if have ldd; then
     LDD_OUT="$(ldd bin/squish-anchor 2>&1)"; echo "$LDD_OUT"
     grep -q 'not found' <<<"$LDD_OUT" && bad "unresolved libraries" || ok "all libraries resolved"
-    grep -E "libQt6Core\.so\.6 => $LIBDIR/libQt6Core\.so\.6" <<<"$LDD_OUT" >/dev/null && ok "libQt6Core.so.6 resolved from the package lib/ via RUNPATH" || bad "libQt6Core.so.6 not resolved from package lib/"
+    QTCORE_PATH="$(awk '$1=="libQt6Core.so.6" && $2=="=>" {print $3; exit}' <<<"$LDD_OUT")"
+    [ -n "$QTCORE_PATH" ] && [ "$(cd "$(dirname "$QTCORE_PATH")" 2>/dev/null && pwd -P)" = "$LIBDIR" ] && ok "libQt6Core.so.6 resolved from the package lib/ via RUNPATH ($QTCORE_PATH)" || bad "libQt6Core.so.6 not resolved from package lib/ (got '$QTCORE_PATH')"
     grep -qE 'libQt6(Gui|Widgets|Qml|Quick|DBus|Network)\.so|libX11|libxcb|libwayland|libGL' <<<"$LDD_OUT" && bad "GUI/display libraries linked" || ok "no Gui/Widgets/Qml/Quick/X11/Wayland/OpenGL dependency"
     for sys in libc.so.6 libm.so.6 libstdc++.so.6 libgcc_s.so.1; do
-        grep -E "^\s*$sys => /(usr/)?lib(64)?/" <<<"$LDD_OUT" >/dev/null && ok "$sys from the system" || bad "$sys not resolved from the system"
+        awk -v n="$sys" '$1==n && $2=="=>" && $3 ~ /^\/(usr\/)?lib(64)?\// {found=1} END {exit !found}' <<<"$LDD_OUT" && ok "$sys from the system" || bad "$sys not resolved from the system"
     done
     LDD_LIBS="$(LD_LIBRARY_PATH="$LIBDIR" ldd lib/libQt6Core.so.6 2>&1)"
     grep -q 'not found' <<<"$LDD_LIBS" && bad "libQt6Core.so.6 has unresolved dependencies" || ok "libQt6Core.so.6 dependencies resolve"
@@ -76,7 +77,8 @@ hdr "readelf --version-info lib/libQt6Core.so.6 | grep Qt_6_PRIVATE_API"
 if have readelf; then
     VI="$(readelf --version-info lib/libQt6Core.so.6 | grep Qt_6_PRIVATE_API)"; echo "$VI"
     [ -n "$VI" ] && ok "Qt_6_PRIVATE_API symbol version present" || bad "Qt_6_PRIVATE_API symbol version ABSENT"
-    readelf -d lib/libQt6Core.so.6 | grep -q 'SONAME.*\[libQt6Core.so.6\]' && ok "SONAME libQt6Core.so.6 preserved" || bad "SONAME not libQt6Core.so.6"
+    CORE_DYN="$(readelf -d lib/libQt6Core.so.6)"
+    grep -q 'SONAME.*\[libQt6Core.so.6\]' <<<"$CORE_DYN" && ok "SONAME libQt6Core.so.6 preserved" || bad "SONAME not libQt6Core.so.6"
 else
     grep -q -a 'Qt_6_PRIVATE_API' lib/libQt6Core.so.6 && ok "Qt_6_PRIVATE_API version string present in libQt6Core.so.6 (readelf not installed; string check)" || bad "Qt_6_PRIVATE_API not found in libQt6Core.so.6"
     skip "readelf --version-info output"

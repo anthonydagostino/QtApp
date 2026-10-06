@@ -7,11 +7,11 @@
 #
 # This is the fallback used when no official Qt 6.6.0 Linux GCC 64-bit SDK
 # (installer/aqt "gcc_64") is supplied via QT_ROOT. The configuration mirrors the
-# official binaries where it matters for the runtime (shared/release build, ICU
-# enabled) but minimises what is taken from the target system: zlib and pcre2 are
-# bundled into libQt6Core and GLib is disabled, so the runtime needs only glibc,
-# libstdc++ and libgcc_s from the RHEL 9 host (the package carries lib/fallback/
-# copies of the latter two for hosts that lack them).
+# official binaries where it matters for the runtime and for the exported symbol set
+# (shared/release build, ICU and GLib enabled, bundled pcre2). zlib is additionally
+# compiled into libQt6Core. The runtime therefore needs glibc, libstdc++, libgcc_s and
+# glib2 from the RHEL 9 host; package-runtime.sh puts fallback copies of everything
+# except glibc into lib/fallback/ for hosts that lack them.
 set -euo pipefail
 
 SRC="${1:?usage: $0 <qtbase-source-dir> <install-prefix> [build-dir]}"
@@ -50,7 +50,7 @@ cd "$BUILD"
     -qt-zlib \
     -qt-pcre \
     -icu \
-    -no-glib \
+    -glib \
     -- \
     -DCMAKE_BUILD_TYPE=Release \
     -DQT_BUILD_TESTS=OFF \

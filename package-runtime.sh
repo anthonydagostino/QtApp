@@ -97,7 +97,8 @@ while read -r name arrow path _; do
     real="$(readlink -f "$path")"
     [ -f "$real" ] || fail "cannot resolve $name ($path)"
     realname="$(basename "$real")"
-    soname="$(readelf -d "$real" | sed -n 's/.*(SONAME) *Library soname: \[\(.*\)\]/\1/p' | head -n1)"
+    dyn="$(readelf -d "$real")"
+    soname="$(sed -n 's/.*(SONAME) *Library soname: \[\(.*\)\]/\1/p; ' <<<"$dyn" | sed -n '1p')"
     if [ ! -e "$PKG_DIR/lib/$realname" ]; then
         cp -p "$real" "$PKG_DIR/lib/$realname"
         chmod 0755 "$PKG_DIR/lib/$realname"
@@ -121,7 +122,7 @@ printf '    %s\n' "${skipped[@]}"
 [ -e "$PKG_DIR/lib/libQt6Core.so.6" ] || fail "lib/libQt6Core.so.6 is missing from the package"
 
 # --- runtime search paths (DT_RUNPATH) ------------------------------------------------------------
-runpath_of() { readelf -d "$1" | sed -n 's/.*(R\(UN\)\?PATH) *Library r\(un\)\?path: \[\(.*\)\]/\3/p' | head -n1; }
+runpath_of() { local d; d="$(readelf -d "$1")"; sed -n 's/.*(R\(UN\)\?PATH) *Library r\(un\)\?path: \[\(.*\)\]/\3/p' <<<"$d" | sed -n '1p'; }
 
 want='$ORIGIN/../lib'
 have="$(runpath_of "$PKG_DIR/bin/squish-anchor")"
@@ -149,30 +150,49 @@ else
     log "WARNING: patchelf not available; bundled libraries keep their RUNPATH (run-squish-anchor.sh sets LD_LIBRARY_PATH, so the wrapper still works)"
 fi
 
-# --- lib/fallback: libstdc++ / libgcc_s safety net for hosts that lack them -------------------------
-# Not on the loader's search path by default: run-squish-anchor.sh appends lib/fallback only when the
-# host provides neither /lib64/libstdc++.so.6 nor /lib64/libgcc_s.so.1. The package therefore runs
-# out of the box on a stripped-down offline VM, while a normal RHEL 9 host keeps using its own copies.
+# --- lib/fallback: safety net for hosts that lack a non-glibc system library ---------------------
+# Every library left to the system above, except glibc itself (libc, libm, libdl, libpthread,
+# librt, the loader), is also copied to lib/fallback/. That directory is NOT on the search path:
+# run-squish-anchor.sh appends it only if the host lacks one of those libraries. A normal RHEL 9
+# host keeps using its own copies; a stripped-down offline VM still starts out of the box.
+GLIBC_RE='^(linux-vdso\.so\.1|ld-linux-x86-64\.so\.2|libc\.so\.6|libm\.so\.6|libpthread\.so\.0|libdl\.so\.2|librt\.so\.1|libresolv\.so\.2|libutil\.so\.1|libnsl\.so\.[0-9]+|libanl\.so\.1|libcrypt\.so\.[0-9]+)$'
 mkdir -p "$PKG_DIR/lib/fallback"
 fallback=()
-for name in libstdc++.so.6 libgcc_s.so.1; do
-    path="$(grep -E "^\s*$name => " <<<"$LDD_OUT" | awk '{print $3}' | head -n1)"
-    [ -n "$path" ] || fail "could not locate $name for lib/fallback"
+while read -r name arrow path _; do
+    [ "$arrow" = "=>" ] || continue
+    [[ "$name" =~ $SYSTEM_LIB_RE ]] || continue
+    [[ "$name" =~ $GLIBC_RE ]] && continue
     real="$(readlink -f "$path")"
-    cp -p "$real" "$PKG_DIR/lib/fallback/$(basename "$real")"
-    chmod 0755 "$PKG_DIR/lib/fallback/$(basename "$real")"
-    [ "$(basename "$real")" != "$name" ] && ln -sfn "$(basename "$real")" "$PKG_DIR/lib/fallback/$name"
-    fallback+=("$name => $(basename "$real") from $path ($(rpm -qf "$real" 2>/dev/null || echo 'build system'))")
-done
+    [ -f "$real" ] || fail "cannot resolve $name ($path) for lib/fallback"
+    realname="$(basename "$real")"
+    cp -p "$real" "$PKG_DIR/lib/fallback/$realname"
+    chmod 0755 "$PKG_DIR/lib/fallback/$realname"
+    [ "$realname" != "$name" ] && ln -sfn "$realname" "$PKG_DIR/lib/fallback/$name"
+    fallback+=("$name => $realname from $path ($(rpm -qf "$real" 2>/dev/null || echo 'build system'))")
+    echo "$name" >> "$PKG_DIR/lib/fallback/SONAMES"
+done <<<"$LDD_OUT"
+if command -v patchelf >/dev/null; then
+    for lib in "$PKG_DIR"/lib/fallback/*; do
+        [ -L "$lib" ] && continue
+        [ "$(runpath_of "$lib")" = '$ORIGIN' ] || patchelf --set-rpath '$ORIGIN' "$lib"
+    done
+fi
 log "lib/fallback/ (only used if the host lacks them):"
 printf '    %s\n' "${fallback[@]}"
+
+# --- strip (like the official Qt binaries); SONAMEs, symbol versions and symlinks are unaffected ---
+if command -v strip >/dev/null; then
+    strip --strip-unneeded "$PKG_DIR/bin/squish-anchor"
+    strip --strip-unneeded "$PKG_DIR/lib/$(basename "$(readlink -f "$PKG_DIR/lib/libQt6Core.so.6")")"
+    log "stripped bin/squish-anchor and libQt6Core"
+fi
 
 # --- wrapper, validator, README, manifest ---------------------------------------------------------
 install -m 0755 run-squish-anchor.sh "$PKG_DIR/run-squish-anchor.sh"
 install -m 0755 scripts/validate-package.sh "$PKG_DIR/validate.sh"
 
-QT_VERSION="$(sed -n 's/^set(PACKAGE_VERSION "\([0-9.]*\)")/\1/p' "$QT_ROOT/lib/cmake/Qt6/Qt6ConfigVersion.cmake" | head -n1)"
-QT_BANNER="$(strings -a "$QT_ROOT/lib/libQt6Core.so.6" | grep -m1 -E '^Qt [0-9]+\.[0-9]+\.[0-9]+ \(' || true)"
+QT_VERSION="$(sed -n 's/^set(PACKAGE_VERSION "\([0-9.]*\)")/\1/p' "$QT_ROOT/lib/cmake/Qt6/Qt6ConfigVersion.cmake" | sed -n '1p')"
+QT_BANNER="$(grep -a -o -m1 'Qt [0-9]*\.[0-9]*\.[0-9]* ([^)]*)' "$QT_ROOT/lib/libQt6Core.so.6" || true)"
 {
     cat packaging/README.runtime.md
     echo

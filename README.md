@@ -61,10 +61,11 @@ version from *that* `libQt6Core.so.6`. The RHEL system Qt package is not used.
    `https://code.qt.io/qt/qtbase.git`) and built *inside the RHEL 9 container with its GCC*
    into `qt-sdk/6.6.0/gcc_64` (`scripts/build-qt-sdk.sh`). Only Qt Core and the build tools
    are built (`-no-gui -no-widgets -no-dbus`, Network/Sql/Xml/Test/Concurrent disabled).
-   The configuration is a shared release build with ICU, like the official binaries, but
-   zlib and pcre2 are compiled into `libQt6Core` and GLib is disabled so that the runtime
-   depends on nothing but glibc, libstdc++ and libgcc_s on the target. This takes roughly
-   20–40 minutes on 4 cores.
+   The configuration matches the official binaries where it matters: shared release
+   build, ICU and GLib enabled, pcre2 bundled; the resulting `libQt6Core.so.6` carries
+   the same ELF symbol-version nodes (`Qt_6`, `Qt_6.0` … `Qt_6.6`, `Qt_6_PRIVATE_API`) and
+   the same Qt export set as the official 6.6.0 library. zlib is additionally compiled in.
+   This takes roughly 20–40 minutes on 4 cores.
 
 Whichever path is used, the SDK is verified **before** the application is built
 (`scripts/verify-qt-sdk.sh`) and again at CMake configure time:
@@ -125,7 +126,7 @@ squish-anchor-rhel9-x86_64/
 │   ├── libQt6Core.so.6 -> libQt6Core.so.6.6.0
 │   ├── libQt6Core.so.6.6.0
 │   ├── Qt runtime dependencies of libQt6Core (ICU libraries)
-│   └── fallback/            libstdc++.so.6, libgcc_s.so.1 (used only if the host has none)
+│   └── fallback/            libstdc++, libgcc_s, glib2, pcre copies (used only if the host lacks them)
 ├── run-squish-anchor.sh
 ├── validate.sh
 └── README.md
@@ -140,15 +141,18 @@ Packaging rules implemented by `package-runtime.sh`:
   `libm.so.6`, `libpthread.so.0`, `libdl.so.2`, `librt.so.1`, `libstdc++.so.6`,
   `libgcc_s.so.1`, `ld-linux-x86-64.so.2`, `libz.so.1`, `libglib-2.0.so.0` and glib's own
   BaseOS dependencies (`libpcre2-8`, `libffi`, `libmount`, `libblkid`, `libselinux`, ...).
-  With the official SDK this bundles `libQt6Core`, Qt's own `libicu*.so.56` and, because
-  the official build links them, nothing else is needed beyond `libz`/`libglib-2.0` from
-  the host; with the source-built SDK it bundles `libQt6Core` and RHEL's `libicu*.so.67`
-  (AppStream, not guaranteed on a minimal host, therefore bundled) and needs no zlib or
-  glib on the host at all.
-- `lib/fallback/` holds copies of `libstdc++.so.6` and `libgcc_s.so.1` from the build
-  environment. They are **not** on the search path: the wrapper appends the directory only
-  if the host provides neither library, so core RHEL libraries are never relocated on a
-  normal host, yet the package still starts on a stripped-down offline VM.
+  With the official SDK this bundles `libQt6Core` and Qt's own `libicu*.so.56`; with the
+  source-built SDK it bundles `libQt6Core` and RHEL's `libicu*.so.67` (AppStream, not
+  guaranteed on a minimal host, therefore bundled). glib2 and its `libpcre.so.1` come from
+  the host like glibc does.
+- `lib/fallback/` holds copies of every host library the binary needs other than glibc
+  itself (`libstdc++.so.6`, `libgcc_s.so.1`, `libglib-2.0.so.0`, `libgthread-2.0.so.0`,
+  `libpcre.so.1`), listed in `lib/fallback/SONAMES`. They are **not** on the search path:
+  the wrapper appends the directory only if the host lacks one of them, so core RHEL
+  libraries are never relocated on a normal host, yet the package still starts on a
+  stripped-down offline VM.
+- `bin/squish-anchor` and the bundled `libQt6Core` are stripped (`--strip-unneeded`),
+  like the official Qt binaries; SONAMEs, symbol versions and symlinks are unaffected.
 - Real files are copied under their real names and the SONAME symlinks are recreated
   (`libQt6Core.so.6 -> libQt6Core.so.6.6.0`). SONAMEs are never changed.
 - `bin/squish-anchor` carries `DT_RUNPATH = $ORIGIN/../lib`, set by CMake at link time
@@ -211,7 +215,31 @@ Stop with `kill -TERM 4711`; the process logs `received SIGTERM, shutting down` 
 For Squish, attach to the logged PID (or start it through `startaut`): the process loads
 exactly one Qt Core library, `lib/libQt6Core.so.6` (6.6.0, `Qt_6_PRIVATE_API` present).
 
-## Provenance of the shipped archive
+## What was built and tested (provenance of the shipped archive)
 
-See the "Build and bundle manifest" section inside the package's `README.md` and the
-"What was built and tested" section below.
+The archive committed here was produced by exactly these scripts, with these inputs:
+
+- **Qt 6.6.0**: the official Qt 6.6.0 `gcc_64` installer/aqt package could not be
+  downloaded in the build environment used (download.qt.io and its mirrors were blocked),
+  so Qt 6.6.0 was built from the `qtbase` **v6.6.0** tag (commit
+  `33f5e985e480283bb0ca9dea5f82643e825ba87c`, `QT_REPO_MODULE_VERSION 6.6.0`) with the
+  RHEL 9 GCC toolchain by `scripts/build-qt-sdk.sh`. No other Qt version was used or
+  substituted. Its `libQt6Core.so.6` reports `Qt 6.6.0 (x86_64-little_endian-lp64 shared
+  (dynamic) release build; by GCC 11.5.0 ...)`, exports `Qt_6_PRIVATE_API`, and was
+  compared with the official Qt 6.6.0 `libQt6Core.so.6` (from the PySide6 6.6.0 wheel on
+  PyPI): identical version-definition nodes and identical Qt export set; the only
+  differences are libstdc++ `std::pmr` helper symbols that the official RHEL 8 toolchain
+  build carries statically.
+- **Build container**: Red Hat's registries were also blocked, so the builder image was
+  built from `docker.io/oraclelinux:9` (Oracle Linux 9.8, a RHEL 9 binary-compatible
+  rebuild: glibc 2.34, GCC 11.5.0, CMake 3.31.8, `Red Hat Enterprise Linux release 9.8
+  (Plow)` in `/etc/redhat-release`) with `BASE_IMAGE=docker.io/oraclelinux:9`. The
+  `Containerfile` defaults to `registry.access.redhat.com/ubi9/ubi` and works unchanged
+  with it.
+- **Validation**: `validate.sh --strict` passed (29/29) inside the builder. The archive was
+  then unpacked and `validate.sh` run in a pristine, network-less `redhat/ubi9` (UBI 9.8)
+  container with no `file`, `readelf` or ICU installed: all checks passed, including
+  `--once`, direct execution via RUNPATH, and SIGTERM/SIGINT shutdown with exit status 0.
+  The fallback path was exercised in `redhat/ubi9-micro`, which has no libstdc++ at all.
+- **Not tested**: attachment with an actual Squish installation (not available here).
+- Archive SHA-256: see `squish-anchor-rhel9-x86_64.tar.gz.sha256`.

@@ -10,7 +10,6 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDateTime>
-#include <QFile>
 #include <QSocketNotifier>
 #include <QString>
 #include <QTimer>
@@ -20,6 +19,8 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <string>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -81,17 +82,16 @@ void logLine(const QString &message)
 QString loadedQtCorePath()
 {
 #ifdef Q_OS_LINUX
-    QFile maps(QStringLiteral("/proc/self/maps"));
-    if (maps.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        while (!maps.atEnd()) {
-            const QString line = QString::fromLocal8Bit(maps.readLine()).trimmed();
-            const int idx = line.indexOf(QLatin1Char('/'));
-            if (idx < 0)
-                continue;
-            const QString path = line.mid(idx);
-            if (path.contains(QLatin1String("libQt6Core.so")))
-                return path;
-        }
+    // procfs files report size 0, so QFile::atEnd() is unreliable here; use iostreams.
+    std::ifstream maps("/proc/self/maps");
+    std::string line;
+    while (std::getline(maps, line)) {
+        const std::string::size_type idx = line.find('/');
+        if (idx == std::string::npos)
+            continue;
+        const std::string path = line.substr(idx);
+        if (path.find("libQt6Core.so") != std::string::npos)
+            return QString::fromLocal8Bit(path.c_str());
     }
 #endif
     return QStringLiteral("(unknown)");
