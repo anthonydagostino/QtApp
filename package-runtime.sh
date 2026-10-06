@@ -172,7 +172,7 @@ while read -r name arrow path _; do
     echo "$name" >> "$PKG_DIR/lib/fallback/SONAMES"
 done <<<"$LDD_OUT"
 if command -v patchelf >/dev/null; then
-    for lib in "$PKG_DIR"/lib/fallback/*; do
+    for lib in "$PKG_DIR"/lib/fallback/*.so*; do
         [ -L "$lib" ] && continue
         [ "$(runpath_of "$lib")" = '$ORIGIN' ] || patchelf --set-rpath '$ORIGIN' "$lib"
     done

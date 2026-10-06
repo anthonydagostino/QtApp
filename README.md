@@ -227,9 +227,11 @@ The archive committed here was produced by exactly these scripts, with these inp
   substituted. Its `libQt6Core.so.6` reports `Qt 6.6.0 (x86_64-little_endian-lp64 shared
   (dynamic) release build; by GCC 11.5.0 ...)`, exports `Qt_6_PRIVATE_API`, and was
   compared with the official Qt 6.6.0 `libQt6Core.so.6` (from the PySide6 6.6.0 wheel on
-  PyPI): identical version-definition nodes and identical Qt export set; the only
-  differences are libstdc++ `std::pmr` helper symbols that the official RHEL 8 toolchain
-  build carries statically.
+  PyPI): identical ELF version-definition nodes, the identical set of 883
+  `Qt_6_PRIVATE_API` symbols, and every public `Qt_6*` symbol of the official library is
+  present (the only official-only entries are libstdc++ `std::pmr` helpers that the RHEL 8
+  toolchain build carries statically; ours additionally exports a few
+  `QOperatingSystemVersion` constants that GCC 11 does not inline).
 - **Build container**: Red Hat's registries were also blocked, so the builder image was
   built from `docker.io/oraclelinux:9` (Oracle Linux 9.8, a RHEL 9 binary-compatible
   rebuild: glibc 2.34, GCC 11.5.0, CMake 3.31.8, `Red Hat Enterprise Linux release 9.8
@@ -240,6 +242,7 @@ The archive committed here was produced by exactly these scripts, with these inp
   then unpacked and `validate.sh` run in a pristine, network-less `redhat/ubi9` (UBI 9.8)
   container with no `file`, `readelf` or ICU installed: all checks passed, including
   `--once`, direct execution via RUNPATH, and SIGTERM/SIGINT shutdown with exit status 0.
-  The fallback path was exercised in `redhat/ubi9-micro`, which has no libstdc++ at all.
+  The fallback path was exercised in `redhat/ubi9-micro`, which has neither libstdc++ nor
+  glib2: the wrapper detected that, added `lib/fallback/`, and `--once` exited 0.
 - **Not tested**: attachment with an actual Squish installation (not available here).
 - Archive SHA-256: see `squish-anchor-rhel9-x86_64.tar.gz.sha256`.
