@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(headlessQtApp
+project(HeadlessQtApp
     VERSION 1.0.0
-    DESCRIPTION "Headless (offscreen) Qt widgets application for Squish attachment on RHEL 9 x86_64"
+    DESCRIPTION "Headless Qt 6.6.0 widgets application for Squish attachment on RHEL 9 x86_64"
     LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -20,7 +20,11 @@ set(HEADLESSQTAPP_REQUIRED_QT_VERSION "6.6.0" CACHE STRING
 option(HEADLESSQTAPP_ALLOW_QT_VERSION_MISMATCH
     "Allow building against a Qt version other than HEADLESSQTAPP_REQUIRED_QT_VERSION (NOT recommended)" OFF)
 
-find_package(Qt6 ${HEADLESSQTAPP_REQUIRED_QT_VERSION} REQUIRED COMPONENTS Core Gui Widgets)
+# All Qt modules shipped in libs/lib64 are linked (and kept with --no-as-needed) so that
+# they are mapped at process start: Squish's preloaded wrapper then finds every Qt
+# library it may need already loaded, without any LD_LIBRARY_PATH.
+find_package(Qt6 ${HEADLESSQTAPP_REQUIRED_QT_VERSION} REQUIRED
+    COMPONENTS Core Gui Widgets Network Xml Concurrent PrintSupport)
 qt_standard_project_setup()
 
 message(STATUS "Qt6Core version: ${Qt6Core_VERSION}")
@@ -61,32 +65,35 @@ if(READELF_EXECUTABLE AND _qt6core_lib AND EXISTS "${_qt6core_lib}")
             "installed Squish Qt wrapper. Refusing to build against it.")
     endif()
 else()
-    message(WARNING "readelf not found; Qt_6_PRIVATE_API check skipped at configure time "
-                    "(tools/scripts/verify-qt-sdk.sh performs the same check).")
+    message(WARNING "readelf not found; Qt_6_PRIVATE_API check skipped at configure time.")
 endif()
 
-qt_add_executable(headlessQtApp
-    src/main.cpp)
+qt_add_executable(HeadlessQtApp
+    main.cpp)
 
-target_compile_definitions(headlessQtApp PRIVATE
+target_compile_definitions(HeadlessQtApp PRIVATE
     HEADLESSQTAPP_VERSION="${PROJECT_VERSION}"
     QT_NO_CAST_FROM_ASCII
     QT_NO_CAST_TO_ASCII)
 
-target_compile_options(headlessQtApp PRIVATE -Wall -Wextra)
+target_compile_options(HeadlessQtApp PRIVATE -Wall -Wextra)
 
-target_link_libraries(headlessQtApp PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_link_options(HeadlessQtApp PRIVATE
+    "LINKER:--no-as-needed"
+    # DT_RPATH (not DT_RUNPATH): it is inherited by every library loaded into the
+    # process, so Squish's preloaded wrapper and dlopen'ed plugins resolve their Qt
+    # dependencies from <pkg>/libs/lib64 as well.
+    "LINKER:--disable-new-dtags")
+target_link_libraries(HeadlessQtApp PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Concurrent Qt6::PrintSupport)
 
-# Relative runtime search path: <pkg>/bin/headlessQtApp -> <pkg>/libs/lib64
-# Emitted as DT_RUNPATH (--enable-new-dtags).
-set_target_properties(headlessQtApp PROPERTIES
+# Relative runtime search path: <pkg>/bin/HeadlessQtApp -> <pkg>/libs/lib64
+set_target_properties(HeadlessQtApp PROPERTIES
     INSTALL_RPATH "$ORIGIN/../libs/lib64"
     INSTALL_RPATH_USE_LINK_PATH OFF
     BUILD_WITH_INSTALL_RPATH OFF
     SKIP_BUILD_RPATH OFF)
-target_link_options(headlessQtApp PRIVATE "LINKER:--enable-new-dtags")
 
-install(TARGETS headlessQtApp RUNTIME DESTINATION bin)
-# qt.conf next to the binary makes Qt find <pkg>/plugins and <pkg>/libs/lib64/fonts
-# without any environment variable.
+install(TARGETS HeadlessQtApp RUNTIME DESTINATION bin)
+# qt.conf next to the binary makes Qt find <pkg>/plugins and <pkg>/libs/lib64/fonts.
 install(FILES tools/packaging/qt.conf DESTINATION bin)
