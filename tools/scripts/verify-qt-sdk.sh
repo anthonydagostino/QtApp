@@ -9,7 +9,7 @@
 set -euo pipefail
 
 QT_ROOT="${1:-${QT_ROOT:-}}"
-REQUIRED_VERSION="${SQUISH_ANCHOR_REQUIRED_QT_VERSION:-6.6.0}"
+REQUIRED_VERSION="${HEADLESSQTAPP_REQUIRED_QT_VERSION:-6.6.0}"
 
 fail() { echo "verify-qt-sdk: ERROR: $*" >&2; exit 1; }
 

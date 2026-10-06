@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Configure, build and install squish-anchor against the Qt SDK at QT_ROOT.
+# Configure, build and install headlessQtApp against the Qt SDK at QT_ROOT.
 # Runs inside the builder container.
 #
 #   build-app.sh <QT_ROOT> [source-dir] [build-dir] [install-prefix]
@@ -25,5 +25,5 @@ cmake --build "$BUILD" --parallel "$JOBS" --verbose
 cmake --install "$BUILD"
 
 echo "build-app: installed:"
-ls -l "$DIST/bin/squish-anchor"
-file "$DIST/bin/squish-anchor"
+ls -l "$DIST/bin/headlessQtApp"
+file "$DIST/bin/headlessQtApp"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Build Qt 6.6.0 (qtbase: Core and friends, no Gui/Widgets/DBus/OpenGL) from the
-# v6.6.0 sources with the RHEL 9 GCC toolchain and install it as a conventional
-# "gcc_64" SDK layout. Runs inside the builder container.
+# Build Qt 6.6.0 (qtbase: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport and
+# the offscreen platform plugin; no X11/Wayland/OpenGL/DBus) from the v6.6.0 sources with
+# the RHEL 9 GCC toolchain and install it as a conventional "gcc_64" SDK layout. Runs
+# inside the builder container.
 #
 #   build-qt-sdk.sh <qtbase-source-dir> <install-prefix> [build-dir]
 #
@@ -17,7 +18,7 @@ set -euo pipefail
 SRC="${1:?usage: $0 <qtbase-source-dir> <install-prefix> [build-dir]}"
 PREFIX="${2:?usage: $0 <qtbase-source-dir> <install-prefix> [build-dir]}"
 BUILD="${3:-$(dirname "$PREFIX")/build-qtbase}"
-REQUIRED_VERSION="${SQUISH_ANCHOR_REQUIRED_QT_VERSION:-6.6.0}"
+REQUIRED_VERSION="${HEADLESSQTAPP_REQUIRED_QT_VERSION:-6.6.0}"
 JOBS="${JOBS:-$(nproc)}"
 
 fail() { echo "build-qt-sdk: ERROR: $*" >&2; exit 1; }
@@ -42,11 +43,15 @@ cd "$BUILD"
     -shared \
     -opensource -confirm-license \
     -nomake examples -nomake tests \
-    -no-gui -no-widgets \
     -no-dbus \
-    -no-opengl \
+    -no-opengl -no-feature-vulkan \
+    -no-xcb -no-feature-xlib -no-feature-xkbcommon \
+    -no-eglfs -no-feature-egl -no-linuxfb -no-feature-vnc \
+    -no-libudev -no-evdev -no-feature-libinput -no-feature-tslib -no-feature-mtdev \
+    -no-cups \
     -no-openssl \
-    -no-feature-network -no-feature-sql -no-feature-xml -no-feature-testlib -no-feature-concurrent \
+    -no-feature-sql -no-feature-testlib \
+    -qt-freetype -no-fontconfig -qt-harfbuzz -qt-libpng -qt-libjpeg \
     -qt-zlib \
     -qt-pcre \
     -icu \

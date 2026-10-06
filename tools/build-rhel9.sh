@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-rhel9.sh - build squish-anchor for RHEL 9 x86_64 inside a UBI 9 / RHEL 9-compatible
+# build-rhel9.sh - build headlessQtApp for RHEL 9 x86_64 inside a UBI 9 / RHEL 9-compatible
 # container, against an exact Qt 6.6.0 Linux GCC 64-bit SDK.
 #
 # Steps:
@@ -11,11 +11,12 @@
 #           with the container's GCC toolchain into ./qt-sdk/6.6.0/gcc_64.
 #   3. Verify the SDK (Qt_6_PRIVATE_API present, version exactly 6.6.0); abort otherwise.
 #   4. Configure/build/install the application into ./dist (./build is the build tree).
+#   Then tools/package.sh lays out bin/, plugins/ and libs/lib64/ at the repository root.
 #
 # Environment overrides:
 #   CONTAINER_TOOL   podman|docker        (auto-detected; podman preferred)
 #   BASE_IMAGE       builder base image   (default registry.access.redhat.com/ubi9/ubi:latest)
-#   IMAGE_TAG        builder image tag    (default squish-anchor-builder:rhel9)
+#   IMAGE_TAG        builder image tag    (default headlessqtapp-builder:rhel9)
 #   QT_ROOT          host path of an official Qt 6.6.0 gcc_64 SDK (mounted read-only)
 #   QT_SOURCE_URL    git URL for qtbase   (default https://github.com/qt/qtbase.git)
 #   QT_TAG           git tag              (default v6.6.0)
@@ -25,14 +26,14 @@
 #   SKIP_IMAGE_BUILD=1  reuse an existing builder image
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
-IMAGE_TAG="${IMAGE_TAG:-squish-anchor-builder:rhel9}"
+IMAGE_TAG="${IMAGE_TAG:-headlessqtapp-builder:rhel9}"
 BASE_IMAGE="${BASE_IMAGE:-registry.access.redhat.com/ubi9/ubi:latest}"
 QT_SOURCE_URL="${QT_SOURCE_URL:-https://github.com/qt/qtbase.git}"
 QT_TAG="${QT_TAG:-v6.6.0}"
-QT_VERSION="${SQUISH_ANCHOR_REQUIRED_QT_VERSION:-6.6.0}"
+QT_VERSION="${HEADLESSQTAPP_REQUIRED_QT_VERSION:-6.6.0}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 
 log()  { echo "[build-rhel9] $*"; }
@@ -64,16 +65,16 @@ if [ "$CONTAINER_TOOL" = docker ] && [ "$(id -u)" != 0 ]; then
 fi
 
 # --- 1. builder image ------------------------------------------------------------------
-mkdir -p build-support/ca-anchors
+mkdir -p tools/build-support/ca-anchors
 if [ -n "${BUILD_CA_BUNDLE:-}" ]; then
     [ -f "$BUILD_CA_BUNDLE" ] || fail "BUILD_CA_BUNDLE not found: $BUILD_CA_BUNDLE"
-    cp "$BUILD_CA_BUNDLE" build-support/ca-anchors/extra-ca.crt
+    cp "$BUILD_CA_BUNDLE" tools/build-support/ca-anchors/extra-ca.crt
 fi
 if [ "${SKIP_IMAGE_BUILD:-0}" != 1 ]; then
     log "building image $IMAGE_TAG from $BASE_IMAGE"
     "$CONTAINER_TOOL" build "${net_args[@]}" "${proxy_build_args[@]}" \
         --build-arg "BASE_IMAGE=$BASE_IMAGE" \
-        -f Containerfile -t "$IMAGE_TAG" .
+        -f tools/Containerfile -t "$IMAGE_TAG" .
 else
     log "SKIP_IMAGE_BUILD=1: reusing image $IMAGE_TAG"
 fi
@@ -85,7 +86,7 @@ run_in_container() {
     shift || true
     "$CONTAINER_TOOL" run --rm "${net_args[@]}" "${proxy_run_args[@]}" "${user_args[@]}" \
         -v "$REPO_DIR:/work${MOUNT_SUFFIX:-}" -w /work \
-        -e "JOBS=$JOBS" -e "SQUISH_ANCHOR_REQUIRED_QT_VERSION=$QT_VERSION" \
+        -e "JOBS=$JOBS" -e "HEADLESSQTAPP_REQUIRED_QT_VERSION=$QT_VERSION" \
         "${extra[@]}" "$IMAGE_TAG" "$@"
 }
 
@@ -113,18 +114,18 @@ else
     tag="$(git -C qt-src/qtbase describe --tags --exact-match 2>/dev/null || true)"
     log "qt-src/qtbase: $(git -C qt-src/qtbase rev-parse HEAD) tag=${tag:-?}"
     [ "$tag" = "$QT_TAG" ] || fail "qt-src/qtbase is not at tag $QT_TAG (got '${tag:-none}')"
-    run_in_container -- scripts/build-qt-sdk.sh /work/qt-src/qtbase "$QT_ROOT_IN" /work/qt-sdk/build-qtbase
+    run_in_container -- tools/scripts/build-qt-sdk.sh /work/qt-src/qtbase "$QT_ROOT_IN" /work/qt-sdk/build-qtbase
 fi
 
 # --- 3. verify SDK (Qt_6_PRIVATE_API, exact version) -----------------------------------
-run_in_container "${sdk_mount[@]}" -- scripts/verify-qt-sdk.sh "$QT_ROOT_IN"
+run_in_container "${sdk_mount[@]}" -- tools/scripts/verify-qt-sdk.sh "$QT_ROOT_IN"
 
 # --- 4. build the application ------------------------------------------------------------
-run_in_container "${sdk_mount[@]}" -- scripts/build-app.sh "$QT_ROOT_IN" /work /work/build /work/dist
+run_in_container "${sdk_mount[@]}" -- tools/scripts/build-app.sh "$QT_ROOT_IN" /work /work/build /work/dist
 
-# Record the SDK location for package-runtime.sh
+# Record the SDK location for tools/package.sh
 printf '%s\n' "$QT_ROOT_IN" > build/qt-root-in-container.txt
 printf '%s\n' "${QT_ROOT:-}" > build/qt-root-on-host.txt
 
-log "done: dist/bin/squish-anchor"
-log "next: ./package-runtime.sh"
+log "done: dist/bin/headlessQtApp"
+log "next: tools/package.sh"

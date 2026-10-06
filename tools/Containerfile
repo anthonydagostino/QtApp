@@ -1,20 +1,20 @@
-# Builder image for squish-anchor: RHEL 9 / UBI 9 userland with the GCC toolchain.
+# Builder image for headlessQtApp: RHEL 9 / UBI 9 userland with the GCC toolchain.
 #
 # Default base: Red Hat Universal Base Image 9. Any RHEL 9-compatible image may be
 # substituted with --build-arg BASE_IMAGE=... (e.g. docker.io/redhat/ubi9,
 # docker.io/oraclelinux:9) when registry.access.redhat.com is not reachable.
 #
 # The image contains the toolchain only. The Qt 6.6.0 SDK and the sources live in
-# bind mounts supplied by build-rhel9.sh (see README.md).
+# bind mounts supplied by tools/build-rhel9.sh (see README.md).
 ARG BASE_IMAGE=registry.access.redhat.com/ubi9/ubi:latest
 FROM ${BASE_IMAGE}
 
-LABEL org.opencontainers.image.title="squish-anchor-builder" \
-      org.opencontainers.image.description="RHEL 9 / UBI 9 build environment for squish-anchor (Qt 6.6.0, GCC, CMake, C++17)"
+LABEL org.opencontainers.image.title="headlessqtapp-builder" \
+      org.opencontainers.image.description="RHEL 9 / UBI 9 build environment for headlessQtApp (Qt 6.6.0, GCC, CMake, C++17)"
 
 # Optional extra CA certificates (e.g. a corporate TLS-inspecting proxy). Any *.crt
-# placed in build-support/ca-anchors/ is added to the system trust store.
-COPY build-support/ /tmp/build-support/
+# placed in tools/build-support/ca-anchors/ is added to the system trust store.
+COPY tools/build-support/ /tmp/build-support/
 RUN set -eu; \
     if ls /tmp/build-support/ca-anchors/*.crt >/dev/null 2>&1; then \
         cp /tmp/build-support/ca-anchors/*.crt /etc/pki/ca-trust/source/anchors/; \
@@ -31,6 +31,7 @@ RUN dnf -y install \
         python3 \
         glibc-langpack-en \
         zlib-devel glib2-devel libicu-devel pcre2-devel \
+        dejavu-sans-fonts \
     && dnf clean all
 
 # ninja-build lives in the CodeReady Builder repo (ubi-9-codeready-builder /
@@ -60,7 +61,7 @@ RUN set -eu; \
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    SQUISH_ANCHOR_IN_CONTAINER=1
+    HEADLESSQTAPP_IN_CONTAINER=1
 
 WORKDIR /work
 CMD ["/bin/bash"]
