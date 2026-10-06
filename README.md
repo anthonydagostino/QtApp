@@ -126,3 +126,30 @@ libraries, `$ORIGIN/../../libs/lib64` on the plugins, `$ORIGIN/../libs/lib64` on
 binary and on `xvfb/Xvfb`).
 
 ## What was built and tested
+
+- **Qt 6.6.0** was built from the `qtbase` **v6.6.0** tag (commit
+  `33f5e985e480283bb0ca9dea5f82643e825ba87c`) with the RHEL 9 GCC 11.5 toolchain (the
+  official 6.6.0 installer was unreachable from the build environment; no other Qt version
+  was substituted). Modules: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport;
+  platforms offscreen, xcb, minimal; ICU and GLib enabled, freetype/harfbuzz/png/jpeg/
+  zlib/pcre2 compiled in, no fontconfig/OpenGL/DBus. Its `libQt6Core.so.6` exports
+  `Qt_6_PRIVATE_API` with the same ELF version nodes and the same 883 private-API symbols
+  as the official Qt 6.6.0 library (compared against the PySide6 6.6.0 wheel).
+- Built in an Oracle Linux 9.8 container (RHEL 9 binary compatible; glibc 2.34, GCC
+  11.5.0). Xvfb, xkbcomp, the XKB data, ICU, glib2 and the X libraries are the RHEL 9
+  (el9) packages, see `libs/lib64/MANIFEST.txt`. Xvfb's compiled-in `/usr/bin` xkbcomp
+  directory is patched to `.` so it runs the bundled `xvfb/xkbcomp`.
+- Build-side validation (67 checks) passed: RPATH, every library/plugin/Xvfb resolving
+  without `LD_LIBRARY_PATH`, `--once`, `--screenshot`, `--desktop-screenshot` on offscreen
+  and on `--xvfb` (xcb, 1280x1024 primary screen), `--core-only`, SIGTERM/SIGINT in both
+  modes with Xvfb stopped and no X socket or lock left behind.
+- The tree was mounted **read-only into a pristine, network-less `redhat/ubi9` (UBI 9.8)
+  container** with no X, ICU, fonts, `file` or `readelf` installed, and the binary was
+  started directly with no environment: `--once` (offscreen, `screens=1`),
+  `--desktop-screenshot` (offscreen), `--xvfb --desktop-screenshot` (xcb on the bundled
+  Xvfb, empty Xvfb log, PNG of the 1280x1024 screen showing the window) and SIGTERM in
+  `--xvfb` mode (exit 0, no Xvfb process left) all passed. The same on `redhat/ubi9-micro`,
+  which has neither libstdc++ nor glib2.
+- **Not tested**: attaching Squish for Qt 8.1.0 (not available here). In your earlier run
+  Squish attached successfully; the remaining question is only which platform its
+  `desktopImage` accepts, hence `--xvfb`.

@@ -187,7 +187,11 @@ public:
         }
         if (m_pid == 0) {
             // child: Xvfb :N -screen 0 WxHxD -nolisten tcp -noreset -xkbdir <xkb> -fp built-ins
-            ::setenv("XKB_BINDIR", binDir.constData(), 1); // where the X server finds xkbcomp
+            // The bundled Xvfb runs "./xkbcomp" (its xkbcomp directory is patched to "."),
+            // so xvfb/ must be the working directory.
+            if (::chdir(binDir.constData()) != 0)
+                std::_Exit(126);
+            ::setenv("XKB_BINDIR", binDir.constData(), 1);
             const int fd = ::open(logPath.constData(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd >= 0) { ::dup2(fd, 1); ::dup2(fd, 2); ::close(fd); }
             std::vector<const char *> args;
@@ -375,7 +379,8 @@ int main(int argc, char *argv[])
         std::fprintf(stderr, "HeadlessQtApp: failed to install signal handlers: %s\n", std::strerror(errno));
         return 1;
     }
-    QSocketNotifier notifier(g_signalFds[1], QSocketNotifier::Read, app.get());
+    // No parent: the notifier lives on the stack and must not be deleted by the application.
+    QSocketNotifier notifier(g_signalFds[1], QSocketNotifier::Read);
     QObject::connect(&notifier, &QSocketNotifier::activated, app.get(), [&notifier]() {
         notifier.setEnabled(false);
         unsigned char byte = 0;
