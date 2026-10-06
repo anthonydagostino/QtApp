@@ -149,8 +149,27 @@ else
     log "WARNING: patchelf not available; bundled libraries keep their RUNPATH (run-squish-anchor.sh sets LD_LIBRARY_PATH, so the wrapper still works)"
 fi
 
-# --- wrapper, README, manifest ----------------------------------------------------------------------
+# --- lib/fallback: libstdc++ / libgcc_s safety net for hosts that lack them -------------------------
+# Not on the loader's search path by default: run-squish-anchor.sh appends lib/fallback only when the
+# host provides neither /lib64/libstdc++.so.6 nor /lib64/libgcc_s.so.1. The package therefore runs
+# out of the box on a stripped-down offline VM, while a normal RHEL 9 host keeps using its own copies.
+mkdir -p "$PKG_DIR/lib/fallback"
+fallback=()
+for name in libstdc++.so.6 libgcc_s.so.1; do
+    path="$(grep -E "^\s*$name => " <<<"$LDD_OUT" | awk '{print $3}' | head -n1)"
+    [ -n "$path" ] || fail "could not locate $name for lib/fallback"
+    real="$(readlink -f "$path")"
+    cp -p "$real" "$PKG_DIR/lib/fallback/$(basename "$real")"
+    chmod 0755 "$PKG_DIR/lib/fallback/$(basename "$real")"
+    [ "$(basename "$real")" != "$name" ] && ln -sfn "$(basename "$real")" "$PKG_DIR/lib/fallback/$name"
+    fallback+=("$name => $(basename "$real") from $path ($(rpm -qf "$real" 2>/dev/null || echo 'build system'))")
+done
+log "lib/fallback/ (only used if the host lacks them):"
+printf '    %s\n' "${fallback[@]}"
+
+# --- wrapper, validator, README, manifest ---------------------------------------------------------
 install -m 0755 run-squish-anchor.sh "$PKG_DIR/run-squish-anchor.sh"
+install -m 0755 scripts/validate-package.sh "$PKG_DIR/validate.sh"
 
 QT_VERSION="$(sed -n 's/^set(PACKAGE_VERSION "\([0-9.]*\)")/\1/p' "$QT_ROOT/lib/cmake/Qt6/Qt6ConfigVersion.cmake" | head -n1)"
 QT_BANNER="$(strings -a "$QT_ROOT/lib/libQt6Core.so.6" | grep -m1 -E '^Qt [0-9]+\.[0-9]+\.[0-9]+ \(' || true)"
@@ -173,6 +192,10 @@ QT_BANNER="$(strings -a "$QT_ROOT/lib/libQt6Core.so.6" | grep -m1 -E '^Qt [0-9]+
     echo
     for l in "${skipped[@]}"; do echo "- $l"; done
     echo
+    echo "Fallback copies in \`lib/fallback/\` (used by the wrapper only if the host lacks them):"
+    echo
+    for l in "${fallback[@]}"; do echo "- $l"; done
+    echo
     echo "\`bin/squish-anchor\` RUNPATH: \`$(runpath_of "$PKG_DIR/bin/squish-anchor")\`"
 } > "$PKG_DIR/README.md"
 
@@ -185,6 +208,6 @@ log "package tree:"
 ( cd "$OUT_DIR" && find "$PKG_NAME" | sort | sed 's/^/    /' )
 
 if [ "${SKIP_VALIDATION:-0}" != 1 ]; then
-    scripts/validate-package.sh "$PKG_DIR"
+    "$PKG_DIR/validate.sh" --strict "$PKG_DIR"
 fi
 log "done: $ARCHIVE"

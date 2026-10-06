@@ -10,6 +10,9 @@ A headless, long-running Qt anchor process for Squish attachment, packaged for
 - Built and bundled against an **exact Qt 6.6.0** Linux GCC 64-bit runtime whose
   `libQt6Core.so.6` exports the `Qt_6_PRIVATE_API` symbol version, which the installed
   Squish Qt wrapper (built with Qt 6.6.0) requires. The build refuses any other Qt.
+- **Deploys to an offline VM out of the box.** The archive is self-contained: no Qt, no
+  container runtime, no packages and no network are needed on the target. Containers are
+  only used on the *build* side.
 
 ## Repository contents
 
@@ -24,7 +27,7 @@ A headless, long-running Qt anchor process for Squish attachment, packaged for
 | `scripts/verify-qt-sdk.sh` | `Qt_6_PRIVATE_API` / exact-version check of a Qt SDK |
 | `scripts/build-qt-sdk.sh` | Fallback: builds Qt 6.6.0 (qtbase, Core only) from the `v6.6.0` sources |
 | `scripts/build-app.sh` | In-container configure/build/install of the app |
-| `scripts/validate-package.sh` | Automated checks of an assembled package |
+| `scripts/validate-package.sh` | Automated checks of an assembled package; shipped in the package as `validate.sh` |
 | `packaging/README.runtime.md` | README template shipped inside the package |
 | `squish-anchor-rhel9-x86_64.tar.gz` | The deployment archive (+ `.sha256`) |
 
@@ -58,8 +61,9 @@ version from *that* `libQt6Core.so.6`. The RHEL system Qt package is not used.
    `https://code.qt.io/qt/qtbase.git`) and built *inside the RHEL 9 container with its GCC*
    into `qt-sdk/6.6.0/gcc_64` (`scripts/build-qt-sdk.sh`). Only Qt Core and the build tools
    are built (`-no-gui -no-widgets -no-dbus`, Network/Sql/Xml/Test/Concurrent disabled).
-   The configuration follows the official binaries where it affects the runtime: shared
-   release build, ICU and glib enabled, system zlib, bundled pcre2. This takes roughly
+   The configuration is a shared release build with ICU, like the official binaries, but
+   zlib and pcre2 are compiled into `libQt6Core` and GLib is disabled so that the runtime
+   depends on nothing but glibc, libstdc++ and libgcc_s on the target. This takes roughly
    20–40 minutes on 4 cores.
 
 Whichever path is used, the SDK is verified **before** the application is built
@@ -120,8 +124,10 @@ squish-anchor-rhel9-x86_64/
 ├── lib/
 │   ├── libQt6Core.so.6 -> libQt6Core.so.6.6.0
 │   ├── libQt6Core.so.6.6.0
-│   └── Qt runtime dependencies of libQt6Core (ICU libraries)
+│   ├── Qt runtime dependencies of libQt6Core (ICU libraries)
+│   └── fallback/            libstdc++.so.6, libgcc_s.so.1 (used only if the host has none)
 ├── run-squish-anchor.sh
+├── validate.sh
 └── README.md
 squish-anchor-rhel9-x86_64.tar.gz
 squish-anchor-rhel9-x86_64.tar.gz.sha256
@@ -134,9 +140,15 @@ Packaging rules implemented by `package-runtime.sh`:
   `libm.so.6`, `libpthread.so.0`, `libdl.so.2`, `librt.so.1`, `libstdc++.so.6`,
   `libgcc_s.so.1`, `ld-linux-x86-64.so.2`, `libz.so.1`, `libglib-2.0.so.0` and glib's own
   BaseOS dependencies (`libpcre2-8`, `libffi`, `libmount`, `libblkid`, `libselinux`, ...).
-  With the official SDK this bundles `libQt6Core` and Qt's own `libicu*.so.56`; with the
-  source-built SDK it bundles `libQt6Core` and RHEL's `libicu*.so.67` (AppStream, not
-  guaranteed on a minimal host, therefore bundled).
+  With the official SDK this bundles `libQt6Core`, Qt's own `libicu*.so.56` and, because
+  the official build links them, nothing else is needed beyond `libz`/`libglib-2.0` from
+  the host; with the source-built SDK it bundles `libQt6Core` and RHEL's `libicu*.so.67`
+  (AppStream, not guaranteed on a minimal host, therefore bundled) and needs no zlib or
+  glib on the host at all.
+- `lib/fallback/` holds copies of `libstdc++.so.6` and `libgcc_s.so.1` from the build
+  environment. They are **not** on the search path: the wrapper appends the directory only
+  if the host provides neither library, so core RHEL libraries are never relocated on a
+  normal host, yet the package still starts on a stripped-down offline VM.
 - Real files are copied under their real names and the SONAME symlinks are recreated
   (`libQt6Core.so.6 -> libQt6Core.so.6.6.0`). SONAMEs are never changed.
 - `bin/squish-anchor` carries `DT_RUNPATH = $ORIGIN/../lib`, set by CMake at link time
@@ -148,8 +160,11 @@ Packaging rules implemented by `package-runtime.sh`:
 
 ## Validate
 
-`package-runtime.sh` ends by running `scripts/validate-package.sh out/squish-anchor-rhel9-x86_64`.
-To validate a deployed copy by hand:
+`package-runtime.sh` ends by running `validate.sh --strict` on the assembled package.
+On the target VM run `./validate.sh` inside the unpacked directory: it needs only bash and
+`ldd`, and skips the `file`/`readelf` presentations if those tools are not installed
+(it still checks the ELF header, the `$ORIGIN/../lib` runtime path and the
+`Qt_6_PRIVATE_API` version string directly from the files). To validate by hand:
 
 ```bash
 tar -xzf squish-anchor-rhel9-x86_64.tar.gz
@@ -168,12 +183,15 @@ else from `/lib64`, with nothing "not found"; `readelf -d` shows
 the `grep` prints the `Qt_6_PRIVATE_API` version definition; `--once` prints the
 startup lines (PID, `qt runtime=6.6.0`) and exits 0.
 
-Automated checks (`scripts/validate-package.sh`) additionally verify: no GUI/X11/Wayland
-libraries are linked, no core RHEL libraries are in `lib/`, the bundled Qt Core reports
-6.6.0, the loaded Core library is the one from `lib/`, the logged PID equals the process
-PID, and `SIGTERM` and `SIGINT` both end the process with exit status 0.
+Automated checks (`validate.sh`) additionally verify: no GUI/X11/Wayland libraries are
+linked, no core RHEL libraries are in `lib/`, the bundled Qt Core reports 6.6.0, the
+loaded Core library is the one from `lib/`, the binary also starts without the wrapper
+(RUNPATH only), the logged PID equals the process PID, and `SIGTERM` and `SIGINT` both end
+the process with exit status 0.
 
-## Run
+## Run (offline VM)
+
+Copy only `squish-anchor-rhel9-x86_64.tar.gz` to the VM. Nothing else is required there.
 
 ```bash
 tar -xzf squish-anchor-rhel9-x86_64.tar.gz -C /opt

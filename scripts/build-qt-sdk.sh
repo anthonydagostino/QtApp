@@ -7,8 +7,11 @@
 #
 # This is the fallback used when no official Qt 6.6.0 Linux GCC 64-bit SDK
 # (installer/aqt "gcc_64") is supplied via QT_ROOT. The configuration mirrors the
-# official binaries where it matters for the runtime: shared/release, ICU + glib
-# enabled, system zlib, bundled pcre2.
+# official binaries where it matters for the runtime (shared/release build, ICU
+# enabled) but minimises what is taken from the target system: zlib and pcre2 are
+# bundled into libQt6Core and GLib is disabled, so the runtime needs only glibc,
+# libstdc++ and libgcc_s from the RHEL 9 host (the package carries lib/fallback/
+# copies of the latter two for hosts that lack them).
 set -euo pipefail
 
 SRC="${1:?usage: $0 <qtbase-source-dir> <install-prefix> [build-dir]}"
@@ -27,6 +30,8 @@ echo "build-qt-sdk: source version: $SRC_VERSION"
 echo "build-qt-sdk: toolchain: $(gcc --version | head -n1); $(cmake --version | head -n1); $(ninja --version)"
 echo "build-qt-sdk: prefix: $PREFIX  build dir: $BUILD  jobs: $JOBS"
 
+# always configure from scratch so stale caches cannot leak old options
+rm -rf "$BUILD"
 mkdir -p "$BUILD"
 cd "$BUILD"
 
@@ -42,10 +47,10 @@ cd "$BUILD"
     -no-opengl \
     -no-openssl \
     -no-feature-network -no-feature-sql -no-feature-xml -no-feature-testlib -no-feature-concurrent \
-    -system-zlib \
+    -qt-zlib \
     -qt-pcre \
     -icu \
-    -glib \
+    -no-glib \
     -- \
     -DCMAKE_BUILD_TYPE=Release \
     -DQT_BUILD_TESTS=OFF \
