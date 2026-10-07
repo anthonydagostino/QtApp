@@ -138,8 +138,9 @@ binary and on `xvfb/Xvfb`).
   was substituted). Modules: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport;
   platforms offscreen, xcb, minimal; ICU and GLib enabled, freetype/harfbuzz/png/jpeg/
   zlib/pcre2 compiled in, no fontconfig/OpenGL/DBus. Its `libQt6Core.so.6` exports
-  `Qt_6_PRIVATE_API` with the same ELF version nodes and the same 883 private-API symbols
-  as the official Qt 6.8.0 library (compared against the PySide6 6.8.0 wheel).
+  `Qt_6_PRIVATE_API` and `Qt_6.8` with the same ELF version nodes as the official Qt 6.8.0
+  library (compared against the PySide6 6.8.0 wheel) and a superset of its private-API
+  symbols (1070 vs 1067).
 - Built in an Oracle Linux 9.8 container (RHEL 9 binary compatible; glibc 2.34, GCC
   11.5.0). Xvfb, xkbcomp, the XKB data, ICU, glib2 and the X libraries are the RHEL 9
   (el9) packages, see `libs/lib64/MANIFEST.txt`. Xvfb's compiled-in `/usr/bin` xkbcomp
