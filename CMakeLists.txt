@@ -20,9 +20,10 @@ set(HEADLESSQTAPP_REQUIRED_QT_VERSION "6.8.0" CACHE STRING
 option(HEADLESSQTAPP_ALLOW_QT_VERSION_MISMATCH
     "Allow building against a Qt version other than HEADLESSQTAPP_REQUIRED_QT_VERSION (NOT recommended)" OFF)
 
-# All Qt modules shipped in libs/lib64 are linked (and kept with --no-as-needed) so that
-# they are mapped at process start: Squish's preloaded wrapper then finds every Qt
-# library it may need already loaded, without any LD_LIBRARY_PATH.
+# The application itself only needs Core and Gui, but every Qt module shipped in
+# libs/lib64 is linked (and kept with --no-as-needed) so that it is mapped at process
+# start: Squish's preloaded wrapper then finds every Qt library it may need already
+# loaded, without any LD_LIBRARY_PATH.
 find_package(Qt6 ${HEADLESSQTAPP_REQUIRED_QT_VERSION} REQUIRED
     COMPONENTS Core Gui Widgets Network Xml Concurrent PrintSupport)
 qt_standard_project_setup()
