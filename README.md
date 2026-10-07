@@ -11,7 +11,12 @@ anything**. Put this folder on the file share and start the binary from the othe
 
 No scripts, no environment variables, no Qt, no packages and no network are needed on the
 machine that runs it. The binary finds everything relative to itself. The only things used
-from that machine are the kernel and glibc.
+from that machine are the kernel and glibc, and nothing in the tree needs more than
+`GLIBC_2.34`, so it runs on **every RHEL 9 release from 9.0 GA on**.
+
+**Do not set `LD_LIBRARY_PATH`** to `libs/lib64` for `startaut`: it is not needed (the
+binary has an RPATH), and it would make Squish's own binaries load libraries from this
+tree instead of the system ones.
 
 ## Layout
 
@@ -139,17 +144,23 @@ binary and on `xvfb/Xvfb`).
   11.5.0). Xvfb, xkbcomp, the XKB data, ICU, glib2 and the X libraries are the RHEL 9
   (el9) packages, see `libs/lib64/MANIFEST.txt`. Xvfb's compiled-in `/usr/bin` xkbcomp
   directory is patched to `.` so it runs the bundled `xvfb/xkbcomp`.
+- **glibc compatibility.** Later RHEL 9.x releases backport new glibc symbol versions
+  (`_dl_find_object@GLIBC_2.35`, used by libgcc builds from 9.2 on), which produce
+  `version 'GLIBC_2.35' not found` on an older 9.x. Every file in this tree is checked to
+  require at most `GLIBC_2.34`; `libgcc_s.so.1` is therefore the RHEL 9.0 GA build
+  (`libgcc-11.2.1-9.4.0.2.el9`, Oracle Linux 9.0 GA = RHEL 9.0 baseline).
 - Build-side validation (67 checks) passed: RPATH, every library/plugin/Xvfb resolving
   without `LD_LIBRARY_PATH`, `--once`, `--screenshot`, `--desktop-screenshot` on offscreen
   and on `--xvfb` (xcb, 1280x1024 primary screen), `--core-only`, SIGTERM/SIGINT in both
   modes with Xvfb stopped and no X socket or lock left behind.
-- The tree was mounted **read-only into a pristine, network-less `redhat/ubi9` (UBI 9.8)
-  container** with no X, ICU, fonts, `file` or `readelf` installed, and the binary was
-  started directly with no environment: `--once` (offscreen, `screens=1`),
-  `--desktop-screenshot` (offscreen), `--xvfb --desktop-screenshot` (xcb on the bundled
-  Xvfb, empty Xvfb log, PNG of the 1280x1024 screen showing the window) and SIGTERM in
-  `--xvfb` mode (exit 0, no Xvfb process left) all passed. The same on `redhat/ubi9-micro`,
-  which has neither libstdc++ nor glib2.
+- The tree was mounted **read-only into pristine, network-less containers** with no X, ICU,
+  fonts, `file` or `readelf` installed, and the binary was started directly with no
+  environment: **`redhat/ubi9:9.0.0-1576` (RHEL 9.0 GA, glibc 2.34-28, no `GLIBC_2.35`)**,
+  `redhat/ubi9` (9.8) and `redhat/ubi9-micro` (no libstdc++, no glib2). On each: `--once`
+  (offscreen, `screens=1`), `--desktop-screenshot` (offscreen), `--xvfb
+  --desktop-screenshot` (xcb on the bundled Xvfb, empty Xvfb log, PNG of the 1280x1024
+  screen showing the window) and SIGTERM in `--xvfb` mode (exit 0, no Xvfb process left)
+  passed; on 9.0 GA also with `LD_LIBRARY_PATH` pointed at `libs/lib64`.
 - **Not tested**: attaching Squish for Qt 8.1.0 (not available here). In your earlier run
   Squish attached successfully; the remaining question is only which platform its
   `desktopImage` accepts, hence `--xvfb`.
