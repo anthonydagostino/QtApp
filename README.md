@@ -1,6 +1,6 @@
 # HeadlessQtApp
 
-A self-contained Qt 6.6.0 widgets application for **RHEL 9 x86_64** that Squish for Qt
+A self-contained Qt 6.8.0 widgets application for **RHEL 9 x86_64** that Squish for Qt
 8.1.0 attaches to with `startaut`, on a machine **without a display and without installing
 anything**. Put this folder on the file share and start the binary from the other VM.
 
@@ -66,8 +66,8 @@ the executable bit visible, e.g. CIFS `file_mode=0755`): `startaut` executes
   `--desktop-screenshot <png>` (grab the primary `QScreen`, exactly what Squish's
   `desktopImage` does), `--core-only` (plain `QCoreApplication`, nothing to screenshot),
   `--help`, `--version`.
-- Built against **exactly Qt 6.6.0**, whose `libQt6Core.so.6` exports `Qt_6_PRIVATE_API`
-  (required by the Squish Qt wrapper built with Qt 6.6.0). The build refuses any other Qt.
+- Built against **exactly Qt 6.8.0**, whose `libQt6Core.so.6` exports `Qt_6_PRIVATE_API`
+  (required by the Squish Qt wrapper built with Qt 6.8.0). The build refuses any other Qt.
 - The binary links all shipped Qt modules with `--no-as-needed` and carries a `DT_RPATH`
   (not `RUNPATH`): the RPATH is inherited by every library loaded into the process, so the
   Squish wrapper that `startaut` preloads resolves its Qt dependencies from `libs/lib64`
@@ -77,7 +77,7 @@ Example output:
 
 ```
 2026-10-06T14:00:00.123 HeadlessQtApp[4711]: started pid=4711 version=1.0.0 mode=widgets/xvfb exe=/mnt/share/HeadlessQtApp/bin/HeadlessQtApp
-2026-10-06T14:00:00.124 HeadlessQtApp[4711]: qt runtime=6.6.0 built-against=6.6.0 core-library=/mnt/share/HeadlessQtApp/libs/lib64/libQt6Core.so.6
+2026-10-06T14:00:00.124 HeadlessQtApp[4711]: qt runtime=6.8.0 built-against=6.8.0 core-library=/mnt/share/HeadlessQtApp/libs/lib64/libQt6Core.so.6
 2026-10-06T14:00:00.124 HeadlessQtApp[4711]: xvfb pid=4712 DISPLAY=:99 log=/tmp/HeadlessQtApp-xvfb-4711-99.log
 2026-10-06T14:00:00.180 HeadlessQtApp[4711]: qpa platform=xcb plugin-paths=/mnt/share/HeadlessQtApp/plugins:...
 2026-10-06T14:00:00.181 HeadlessQtApp[4711]: screens=1 primary=screen 1280x1024
@@ -114,16 +114,16 @@ readelf --version-info libs/lib64/libQt6Core.so.6 | grep Qt_6_PRIVATE_API
 ## Rebuilding
 
 Only `main.cpp` and `CMakeLists.txt` are needed to rebuild; the tooling that produced the
-binaries (a RHEL 9 container with the Qt 6.6.0 SDK) is not part of this repository. In any
-RHEL 9 environment with a Qt 6.6.0 `gcc_64` SDK and `cmake`/`g++`:
+binaries (a RHEL 9 container with the Qt 6.8.0 SDK) is not part of this repository. In any
+RHEL 9 environment with a Qt 6.8.0 `gcc_64` SDK and `cmake`/`g++`:
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH=/opt/Qt/6.6.0/gcc_64 -DCMAKE_INSTALL_PREFIX="$PWD/dist"
+      -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.0/gcc_64 -DCMAKE_INSTALL_PREFIX="$PWD/dist"
 cmake --build build --parallel && cmake --install build      # -> dist/bin/HeadlessQtApp
 ```
 
-Configure stops if the SDK is not exactly 6.6.0 or its `libQt6Core.so.6` lacks
+Configure stops if the SDK is not exactly 6.8.0 or its `libQt6Core.so.6` lacks
 `Qt_6_PRIVATE_API` (`readelf --version-info "$QT_ROOT/lib/libQt6Core.so.6" | grep Qt_6_PRIVATE_API`).
 Then copy the binary to `bin/`, keep `bin/qt.conf`, and put the Qt libraries and plugins
 next to it as in the layout above (real files named by SONAME, RPATH `$ORIGIN` on the
@@ -132,14 +132,14 @@ binary and on `xvfb/Xvfb`).
 
 ## What was built and tested
 
-- **Qt 6.6.0** was built from the `qtbase` **v6.6.0** tag (commit
-  `33f5e985e480283bb0ca9dea5f82643e825ba87c`) with the RHEL 9 GCC 11.5 toolchain (the
-  official 6.6.0 installer was unreachable from the build environment; no other Qt version
+- **Qt 6.8.0** was built from the `qtbase` **v6.8.0** tag (commit
+  `b839e9b36db3a4e50dfb34521d8ef8de1fd01969`) with the RHEL 9 GCC 11.5 toolchain (the
+  official 6.8.0 installer was unreachable from the build environment; no other Qt version
   was substituted). Modules: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport;
   platforms offscreen, xcb, minimal; ICU and GLib enabled, freetype/harfbuzz/png/jpeg/
   zlib/pcre2 compiled in, no fontconfig/OpenGL/DBus. Its `libQt6Core.so.6` exports
   `Qt_6_PRIVATE_API` with the same ELF version nodes and the same 883 private-API symbols
-  as the official Qt 6.6.0 library (compared against the PySide6 6.6.0 wheel).
+  as the official Qt 6.8.0 library (compared against the PySide6 6.8.0 wheel).
 - Built in an Oracle Linux 9.8 container (RHEL 9 binary compatible; glibc 2.34, GCC
   11.5.0). Xvfb, xkbcomp, the XKB data, ICU, glib2 and the X libraries are the RHEL 9
   (el9) packages, see `libs/lib64/MANIFEST.txt`. Xvfb's compiled-in `/usr/bin` xkbcomp

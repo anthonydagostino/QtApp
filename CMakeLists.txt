@@ -13,9 +13,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-# The Squish for Qt 8.1.0 wrapper was built with Qt 6.6.0 and needs the
+# The Squish for Qt 8.1.0 wrapper was built with Qt 6.8.0 and needs the
 # Qt_6_PRIVATE_API symbol version from that exact libQt6Core.so.6.
-set(HEADLESSQTAPP_REQUIRED_QT_VERSION "6.6.0" CACHE STRING
+set(HEADLESSQTAPP_REQUIRED_QT_VERSION "6.8.0" CACHE STRING
     "Exact Qt version this application must be built against")
 option(HEADLESSQTAPP_ALLOW_QT_VERSION_MISMATCH
     "Allow building against a Qt version other than HEADLESSQTAPP_REQUIRED_QT_VERSION (NOT recommended)" OFF)
@@ -34,7 +34,7 @@ if(NOT Qt6Core_VERSION VERSION_EQUAL HEADLESSQTAPP_REQUIRED_QT_VERSION)
     else()
         message(FATAL_ERROR
             "Qt ${Qt6Core_VERSION} found, but this application must be built against Qt "
-            "${HEADLESSQTAPP_REQUIRED_QT_VERSION} exactly (set CMAKE_PREFIX_PATH to the Qt 6.6.0 gcc_64 SDK).")
+            "${HEADLESSQTAPP_REQUIRED_QT_VERSION} exactly (set CMAKE_PREFIX_PATH to the Qt 6.8.0 gcc_64 SDK).")
     endif()
 endif()
 
