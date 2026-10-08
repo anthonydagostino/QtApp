@@ -6,6 +6,9 @@
 //
 //   <squish>/bin/startaut --port=4322 /path/to/HeadlessQtApp/bin/HeadlessQtApp
 //
+// bin/ holds six identical copies (HeadlessQtApp, HeadlessQtApp2 ... HeadlessQtApp6) so
+// that several anchors can be registered and attached independently.
+//
 // Overrides: DISPLAY=:N (which display), XAUTHORITY=<cookie file> (if the X server needs
 // one), QT_QPA_PLATFORM=offscreen (run with no display at all; nothing to screenshot then).
 // Everything else (Qt libraries, plugins) is found relative to the binary.
@@ -28,7 +31,10 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
 
     const QScreen *screen = QGuiApplication::primaryScreen();
-    std::printf("HeadlessQtApp pid=%ld qt=%s platform=%s display=%s screen=%s %dx%d\n",
+    // The same binary is shipped under several names (bin/HeadlessQtApp, HeadlessQtApp2, ...);
+    // print the name it was started as so instances can be told apart.
+    std::printf("%s pid=%ld qt=%s platform=%s display=%s screen=%s %dx%d\n",
+                qPrintable(QCoreApplication::applicationName()),
                 static_cast<long>(::getpid()), qVersion(),
                 qPrintable(QGuiApplication::platformName()), qgetenv("DISPLAY").constData(),
                 screen ? qPrintable(screen->name()) : "none",

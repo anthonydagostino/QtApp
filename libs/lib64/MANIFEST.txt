@@ -1,5 +1,5 @@
 HeadlessQtApp runtime manifest
-built: 2026-10-07T19:43:09Z on Red Hat Enterprise Linux release 9.8 (Plow), glibc 2.34, g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14.0.1)
+built: 2026-10-08T12:52:30Z on Red Hat Enterprise Linux release 9.8 (Plow), glibc 2.34, g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14.0.1)
 Qt: Qt 6.8.0 (x86_64-little_endian-lp64 shared (dynamic)
 glibc requirement: every file needs at most GLIBC_2.34 (RHEL 9.0 GA and later)
 

@@ -13,8 +13,15 @@ The whole application (`main.cpp`):
 
 - connects to the machine's X display through Qt's xcb platform plugin (`DISPLAY`,
   default `:0`),
-- prints one line (`HeadlessQtApp pid=... qt=6.8.0 platform=xcb display=:0 screen=... WxH`),
+- prints one line (`HeadlessQtApp pid=... qt=6.8.0 platform=xcb display=:0 screen=... WxH`,
+  with the name it was started as),
 - runs the Qt event loop until it is killed. No window, no widgets.
+
+`bin/` contains six byte-identical copies of the binary, `HeadlessQtApp` and
+`HeadlessQtApp2` … `HeadlessQtApp6`, so that up to six anchors can be registered as
+separate AUTs and attached to independently (each on its own `startaut` port). Any further
+copy under any name in `bin/` works the same way, since everything is found relative to the
+binary's own directory.
 
 Squish's desktop screenshot grabs the primary `QScreen`, which here is the real X display,
 so the screenshot shows whatever is on the VM's screen, not the anchor (which has nothing
@@ -26,6 +33,7 @@ to show).
 HeadlessQtApp/
 ├── bin/
 │   ├── HeadlessQtApp            ELF x86_64, DT_RPATH $ORIGIN/../libs/lib64
+│   ├── HeadlessQtApp2 … HeadlessQtApp6   five identical copies (separate AUTs for Squish)
 │   └── qt.conf                  tells Qt where plugins/ is
 ├── plugins/
 │   ├── platforms/libqxcb.so  libqoffscreen.so  libqminimal.so
@@ -108,7 +116,7 @@ libraries, `$ORIGIN/../../libs/lib64` on the plugins, `$ORIGIN/../libs/lib64` on
   `libgcc_s.so.1` is the RHEL 9.0 GA build so that nothing needs `GLIBC_2.35`
   (`_dl_find_object`, backported only in later 9.x); packaging verifies every file stays
   within `GLIBC_2.34`.
-- Build-side validation (50 checks): RPATH, every library/plugin resolving without
+- Build-side validation (55 checks, including that the five copies are byte-identical): RPATH, every library/plugin resolving without
   `LD_LIBRARY_PATH`, offscreen run, xcb run against an Xvfb (reports the display's screen,
   no window created), stays in the event loop until SIGTERM, clean failure message without
   an X server.
@@ -116,7 +124,8 @@ libraries, `$ORIGIN/../../libs/lib64` on the plugins, `$ORIGIN/../libs/lib64` on
   (RHEL 9.0 GA, glibc 2.34-28), `redhat/ubi9` (9.8) and `redhat/ubi9-micro`** containers
   with no X, ICU or glib installed, and the binary started directly: it attached to an X
   server running elsewhere (`DISPLAY=127.0.0.1:97`, 1280x800), stayed running until
-  SIGTERM, and ran with `QT_QPA_PLATFORM=offscreen`.
+  SIGTERM, and ran with `QT_QPA_PLATFORM=offscreen`; on 9.0 GA all six copies also ran
+  concurrently against that display, each reporting its own name.
 - **Not tested here**: Squish itself (not available). In your runs Squish attached to the
   Qt 6.8.0 tree and took desktop screenshots of the display the anchor was connected to.
   Whether image-based *clicks* reach the custom UI on the VM depends on how Squish
