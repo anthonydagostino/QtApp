@@ -37,7 +37,7 @@ for t in readelf strip; do command -v "$t" >/dev/null 2>&1 || HAVE_BINUTILS=0; d
 command -v ldd >/dev/null 2>&1 || fail "ldd (glibc) not found"
 [ -x "$PATCHELF" ] || chmod +x "$PATCHELF" 2>/dev/null || true
 "$PATCHELF" --version >/dev/null 2>&1 || fail "$PATCHELF does not run"
-[ -e "$QT_ROOT/lib/libQt6Core.so.6" ] || fail "Qt SDK missing: $QT_ROOT/lib/libQt6Core.so.6"
+[ -e "$QT_ROOT/lib/libQt6Core.so.$QT_VERSION" ] || fail "Qt SDK missing: $QT_ROOT/lib/libQt6Core.so.$QT_VERSION"
 if [ $COMPILE = 1 ]; then
     log "toolchain: $(g++ --version | head -n1); $(cmake --version | head -n1); $(cat /etc/redhat-release 2>/dev/null || true)"
 else
@@ -49,7 +49,7 @@ fi
 
 
 # --- verify the Qt SDK (exact version, Qt_6_PRIVATE_API and Qt_6.8 symbol versions) --------
-CORE="$(readlink -f "$QT_ROOT/lib/libQt6Core.so.6")"
+CORE="$QT_ROOT/lib/libQt6Core.so.$QT_VERSION"   # the SDK has no symlinks (checks out on any filesystem)
 if [ $HAVE_BINUTILS = 1 ]; then
     VI="$(readelf --version-info "$CORE")"
     grep -q 'Qt_6_PRIVATE_API' <<<"$VI" || fail "Qt_6_PRIVATE_API absent from $CORE (incompatible with the Squish Qt wrapper)"
@@ -90,10 +90,9 @@ done
 for f in "$QT_ROOT"/plugins/imageformats/*.so; do [ -f "$f" ] && install -m 0755 "$f" plugins/imageformats/; done
 
 # Qt libraries: real files named by SONAME (no symlinks, survives SMB shares)
-for f in "$QT_ROOT"/lib/libQt6*.so.6; do
-    real="$(readlink -f "$f")"
-    soname="$("$PATCHELF" --print-soname "$real" 2>/dev/null || basename "$f")"
-    install -m 0755 "$real" "$LIB/${soname:-$(basename "$f")}"
+for real in "$QT_ROOT"/lib/libQt6*.so."$QT_VERSION"; do
+    soname="$("$PATCHELF" --print-soname "$real" 2>/dev/null || basename "$real" ".$QT_VERSION")"
+    install -m 0755 "$real" "$LIB/$soname"
 done
 # non-Qt runtime libraries (ICU, glib2, pcre, zstd, X11/xcb/xkbcommon, libstdc++, libgcc_s 9.0 GA)
 for f in support/runtime-libs/lib64/*; do install -m 0755 "$f" "$LIB/$(basename "$f")"; done

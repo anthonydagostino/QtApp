@@ -17,6 +17,11 @@ On a system that is not registered and uses local ISO repositories, a broken rep
 packages are in BaseOS/AppStream, so `sudo dnf --disablerepo=Local-CRB install gcc-c++
 cmake make binutils` works as long as those two repos are reachable (or mount the ISO).
 
+**Clone to a local disk** (e.g. `~/QtApp-build`), not to a VirtualBox/VMware shared folder
+or an SMB mount: those filesystems cannot hold symlinks or Unix permissions and are slow.
+The SDK in this branch contains no symlinks, so it checks out anywhere, but the build
+itself should run on a normal local filesystem.
+
 **No compiler at all?** `build.sh` then uses `support/prebuilt/HeadlessQtApp` (built from
 this same `main.cpp`) and only lays out the tree; without `binutils` it skips stripping and
 the symbol-version checks. It says so in its output.
