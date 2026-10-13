@@ -47,6 +47,17 @@ those three folders to the share and start it with Squish:
 
 No network is needed by `build.sh`. No container is involved.
 
+## Naming the executables
+
+The names of the six executables are one list near the top of `build.sh`:
+
+```bash
+APP_NAMES=(HeadlessQtApp HeadlessQtApp2 HeadlessQtApp3 HeadlessQtApp4 HeadlessQtApp5 HeadlessQtApp6)
+```
+
+Edit it (any names, any count) and run `./build.sh` again. All of them are byte-identical
+copies of the same binary; each prints the name it was started as.
+
 ## What build.sh does
 
 1. Checks for `cmake`, `g++`, `make` (otherwise falls back to the prebuilt binary) and

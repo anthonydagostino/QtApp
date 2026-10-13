@@ -24,6 +24,10 @@ PATCHELF="$ROOT/support/patchelf"
 LIB="libs/lib64"
 GLIBC_MAX="2.34"            # RHEL 9.0 GA baseline: the tree must run on every RHEL 9.x
 
+# Names of the executables to put in bin/ (all byte-identical copies of the same binary).
+# Edit this list to name them as you like; each one is a separate AUT for Squish.
+APP_NAMES=(HeadlessQtApp HeadlessQtApp2 HeadlessQtApp3 HeadlessQtApp4 HeadlessQtApp5 HeadlessQtApp6)
+
 log()  { echo "[build] $*"; }
 fail() { echo "[build] ERROR: $*" >&2; exit 1; }
 
@@ -80,9 +84,9 @@ fi
 # --- lay out the tree --------------------------------------------------------------------------
 rm -rf bin plugins libs
 mkdir -p bin plugins/platforms plugins/imageformats "$LIB"
-install -m 0755 dist/bin/HeadlessQtApp bin/HeadlessQtApp
-for n in 2 3 4 5 6; do install -m 0755 dist/bin/HeadlessQtApp "bin/HeadlessQtApp$n"; done
+for name in "${APP_NAMES[@]}"; do install -m 0755 dist/bin/HeadlessQtApp "bin/$name"; done
 install -m 0644 support/qt.conf bin/qt.conf
+FIRST="bin/${APP_NAMES[0]}"
 
 for f in "$QT_ROOT"/plugins/platforms/libqxcb.so "$QT_ROOT"/plugins/platforms/libqoffscreen.so "$QT_ROOT"/plugins/platforms/libqminimal.so; do
     [ -f "$f" ] || fail "missing plugin $f"; install -m 0755 "$f" plugins/platforms/
@@ -98,14 +102,17 @@ done
 for f in support/runtime-libs/lib64/*; do install -m 0755 "$f" "$LIB/$(basename "$f")"; done
 
 # RPATH (DT_RPATH, inherited by everything loaded into the process, Squish's wrapper included)
-"$PATCHELF" --force-rpath --set-rpath '$ORIGIN/../libs/lib64' bin/HeadlessQtApp*
+for name in "${APP_NAMES[@]}"; do "$PATCHELF" --force-rpath --set-rpath '$ORIGIN/../libs/lib64' "bin/$name"; done
 for f in plugins/*/*.so; do "$PATCHELF" --force-rpath --set-rpath '$ORIGIN/../../libs/lib64' "$f"; done
 for f in "$LIB"/*.so*; do "$PATCHELF" --force-rpath --set-rpath '$ORIGIN' "$f"; done
-[ $HAVE_BINUTILS = 1 ] && strip --strip-unneeded bin/HeadlessQtApp* plugins/*/*.so "$LIB"/libQt6*.so.6
+if [ $HAVE_BINUTILS = 1 ]; then
+    for name in "${APP_NAMES[@]}"; do strip --strip-unneeded "bin/$name"; done
+    strip --strip-unneeded plugins/*/*.so "$LIB"/libQt6*.so.6
+fi
 
 # --- checks ---------------------------------------------------------------------------------------
 bad=0
-[ $HAVE_BINUTILS = 1 ] && for f in bin/HeadlessQtApp* plugins/*/*.so "$LIB"/*.so*; do
+[ $HAVE_BINUTILS = 1 ] && for f in "${APP_NAMES[@]/#/bin/}" plugins/*/*.so "$LIB"/*.so*; do
     need="$( (readelf -V "$f" 2>/dev/null || true) | (grep -oE 'GLIBC_2\.[0-9]+' || true) | sort -t. -k2 -n -u | tail -n1 | sed 's/GLIBC_//')"
     [ -n "$need" ] || continue
     if [ "$(printf '%s\n%s\n' "$GLIBC_MAX" "$need" | sort -t. -k2 -n | tail -n1)" != "$GLIBC_MAX" ]; then
@@ -113,13 +120,13 @@ bad=0
     fi
 done
 [ $bad = 0 ] || fail "files require glibc symbols newer than RHEL 9.0 GA"
-for f in bin/HeadlessQtApp plugins/*/*.so "$LIB"/*.so*; do
+for f in "$FIRST" plugins/*/*.so "$LIB"/*.so*; do
     if env -u LD_LIBRARY_PATH ldd "$f" 2>&1 | grep -q 'not found'; then
         echo "[build] ERROR: $f: $(env -u LD_LIBRARY_PATH ldd "$f" | grep 'not found' | tr -s ' \n' ' ')" >&2; bad=1
     fi
 done
 [ $bad = 0 ] || fail "unresolved libraries"
-"$PATCHELF" --print-rpath bin/HeadlessQtApp | grep -q '^\$ORIGIN/../libs/lib64$' || fail "RPATH not set on bin/HeadlessQtApp"
+"$PATCHELF" --print-rpath "$FIRST" | grep -q '^\$ORIGIN/../libs/lib64$' || fail "RPATH not set on $FIRST"
 find bin plugins libs -type l | grep -q . && fail "symlinks in the tree"
 
 {
@@ -132,10 +139,11 @@ find bin plugins libs -type l | grep -q . && fail "symlinks in the tree"
 
 # --- smoke test: starts, prints its line, stays in the event loop until SIGTERM ------------------
 tmp="$(mktemp)"
-env -u LD_LIBRARY_PATH -u DISPLAY QT_QPA_PLATFORM=offscreen ./bin/HeadlessQtApp >"$tmp" 2>&1 & pid=$!
-for _ in $(seq 1 100); do grep -q '^HeadlessQtApp pid=' "$tmp" 2>/dev/null && break; kill -0 $pid 2>/dev/null || break; sleep 0.1; done
+env -u LD_LIBRARY_PATH -u DISPLAY QT_QPA_PLATFORM=offscreen "./$FIRST" >"$tmp" 2>&1 & pid=$!
+for _ in $(seq 1 100); do grep -q ' pid=' "$tmp" 2>/dev/null && break; kill -0 $pid 2>/dev/null || break; sleep 0.1; done
 if kill -0 $pid 2>/dev/null; then kill -TERM $pid; wait $pid 2>/dev/null || true; log "smoke test: $(head -n1 "$tmp")"; else cat "$tmp"; fail "smoke test: the binary did not start"; fi
 rm -f "$tmp"
 
 log "done. Deployable tree: bin/ plugins/ libs/lib64/  ($(du -sh libs | cut -f1) libs)"
-log "copy bin/ plugins/ libs/ to the share and run:  <squish>/bin/startaut --port=4322 <share>/HeadlessQtApp/bin/HeadlessQtApp"
+log "executables: ${APP_NAMES[*]}"
+log "copy bin/ plugins/ libs/ to the share and run:  <squish>/bin/startaut --port=4322 <share>/HeadlessQtApp/bin/${APP_NAMES[0]}"
