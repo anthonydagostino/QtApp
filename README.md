@@ -12,6 +12,15 @@ cd HeadlessQtApp
 ./build.sh
 ```
 
+On a system that is not registered and uses local ISO repositories, a broken repo entry
+(e.g. `Local-CRB` pointing at an unmounted ISO) makes every `dnf` command fail; the four
+packages are in BaseOS/AppStream, so `sudo dnf --disablerepo=Local-CRB install gcc-c++
+cmake make binutils` works as long as those two repos are reachable (or mount the ISO).
+
+**No compiler at all?** `build.sh` then uses `support/prebuilt/HeadlessQtApp` (built from
+this same `main.cpp`) and only lays out the tree; without `binutils` it skips stripping and
+the symbol-version checks. It says so in its output.
+
 Result: `bin/`, `plugins/` and `libs/lib64/` in this directory, the deployable tree. Copy
 those three folders to the share and start it with Squish:
 
@@ -29,12 +38,14 @@ those three folders to the share and start it with Squish:
 | `support/runtime-libs/lib64/` | the non-Qt libraries shipped in `libs/lib64` (ICU 67, glib2, pcre, zstd, X11/xcb/xkbcommon, libstdc++, `libgcc_s` from RHEL 9.0 GA); `ORIGINS.txt` names the RPMs |
 | `support/patchelf` | patchelf 0.15 (EPEL build; not in the RHEL repositories), used to set RPATHs |
 | `support/qt.conf` | copied next to the binary so Qt finds `plugins/` |
+| `support/prebuilt/HeadlessQtApp` | fallback binary (built from this `main.cpp`) used when no compiler is installed |
 
 No network is needed by `build.sh`. No container is involved.
 
 ## What build.sh does
 
-1. Checks for `cmake`, `g++`, `make`, `readelf`, `strip`, `ldd`.
+1. Checks for `cmake`, `g++`, `make` (otherwise falls back to the prebuilt binary) and
+   `readelf`/`strip` (otherwise skips stripping and the symbol-version checks).
 2. Verifies the Qt SDK is exactly 6.8.0 and that its `libQt6Core.so.6` exports the
    `Qt_6_PRIVATE_API` and `Qt_6.8` symbol versions (what Squish for Qt 8.1.0, built with
    Qt 6.8.0, requires). `CMakeLists.txt` checks the same at configure time.

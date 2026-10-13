@@ -3,6 +3,9 @@
 # (bin/, plugins/, libs/lib64/) exactly like the "claude/new-session-6jr4li" branch ships it.
 #
 # Needs only the RHEL toolchain packages:   sudo dnf install gcc-c++ cmake make binutils
+# (on an unregistered system with ISO-based repos:  sudo dnf --disablerepo=Local-CRB install ...)
+# Without a compiler it falls back to support/prebuilt/HeadlessQtApp, built from the same
+# main.cpp, and only lays out the tree; without binutils the strip/readelf checks are skipped.
 # Everything else is in this repository:
 #   qt/6.8.0/gcc_64/          Qt 6.8.0 SDK (headers, libraries, CMake files, moc/rcc/uic)
 #   support/runtime-libs/     the non-Qt libraries that go into libs/lib64 (ICU, glib2, X11/xcb, ...)
@@ -27,33 +30,52 @@ fail() { echo "[build] ERROR: $*" >&2; exit 1; }
 if [ "${1:-}" = "clean" ]; then rm -rf build dist bin plugins libs; log "cleaned"; exit 0; fi
 
 # --- prerequisites -------------------------------------------------------------------------
-missing=()
-for t in cmake g++ make readelf strip ldd; do command -v "$t" >/dev/null 2>&1 || missing+=("$t"); done
-[ ${#missing[@]} -eq 0 ] || fail "missing tools: ${missing[*]}  ->  sudo dnf install gcc-c++ cmake make binutils"
+COMPILE=1
+for t in cmake g++ make; do command -v "$t" >/dev/null 2>&1 || COMPILE=0; done
+HAVE_BINUTILS=1
+for t in readelf strip; do command -v "$t" >/dev/null 2>&1 || HAVE_BINUTILS=0; done
+command -v ldd >/dev/null 2>&1 || fail "ldd (glibc) not found"
 [ -x "$PATCHELF" ] || chmod +x "$PATCHELF" 2>/dev/null || true
 "$PATCHELF" --version >/dev/null 2>&1 || fail "$PATCHELF does not run"
 [ -e "$QT_ROOT/lib/libQt6Core.so.6" ] || fail "Qt SDK missing: $QT_ROOT/lib/libQt6Core.so.6"
-log "toolchain: $(g++ --version | head -n1); $(cmake --version | head -n1); $(cat /etc/redhat-release 2>/dev/null || true)"
+if [ $COMPILE = 1 ]; then
+    log "toolchain: $(g++ --version | head -n1); $(cmake --version | head -n1); $(cat /etc/redhat-release 2>/dev/null || true)"
+else
+    [ -x support/prebuilt/HeadlessQtApp ] || chmod +x support/prebuilt/HeadlessQtApp 2>/dev/null || true
+    [ -f support/prebuilt/HeadlessQtApp ] || fail "no compiler (cmake/g++/make) and no support/prebuilt/HeadlessQtApp -> sudo dnf install gcc-c++ cmake make binutils"
+    log "WARNING: cmake/g++/make not found -> using the prebuilt binary support/prebuilt/HeadlessQtApp (built from this main.cpp); install gcc-c++ cmake make to compile it yourself"
+fi
+[ $HAVE_BINUTILS = 1 ] || log "WARNING: binutils (readelf/strip) not found -> binaries are not stripped and the symbol-version checks are skipped"
+
 
 # --- verify the Qt SDK (exact version, Qt_6_PRIVATE_API and Qt_6.8 symbol versions) --------
 CORE="$(readlink -f "$QT_ROOT/lib/libQt6Core.so.6")"
-VI="$(readelf --version-info "$CORE")"
-grep -q 'Qt_6_PRIVATE_API' <<<"$VI" || fail "Qt_6_PRIVATE_API absent from $CORE (incompatible with the Squish Qt wrapper)"
-grep -q 'Name: Qt_6.8$' <<<"$VI" || fail "Qt_6.8 symbol version absent from $CORE"
+if [ $HAVE_BINUTILS = 1 ]; then
+    VI="$(readelf --version-info "$CORE")"
+    grep -q 'Qt_6_PRIVATE_API' <<<"$VI" || fail "Qt_6_PRIVATE_API absent from $CORE (incompatible with the Squish Qt wrapper)"
+    grep -q 'Name: Qt_6.8$' <<<"$VI" || fail "Qt_6.8 symbol version absent from $CORE"
+else
+    grep -q -a 'Qt_6_PRIVATE_API' "$CORE" && grep -q -a 'Qt_6.8' "$CORE" || fail "Qt_6_PRIVATE_API / Qt_6.8 not found in $CORE"
+fi
 SDK_VERSION="$(cat "$QT_ROOT"/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake "$QT_ROOT"/lib/cmake/Qt6/Qt6ConfigVersion.cmake 2>/dev/null | sed -n 's/^set(PACKAGE_VERSION "\([0-9.]*\)")/\1/p' | sed -n '1p')"
 [ -n "$SDK_VERSION" ] || SDK_VERSION="$(grep -a -o -m1 'Qt [0-9]*\.[0-9]*\.[0-9]* (x86_64' "$CORE" | sed 's/^Qt //; s/ (x86_64//')"
 [ "$SDK_VERSION" = "$QT_VERSION" ] || fail "SDK is Qt $SDK_VERSION, need exactly $QT_VERSION"
 log "Qt SDK: $SDK_VERSION, Qt_6_PRIVATE_API and Qt_6.8 present"
 
 # --- build the application ------------------------------------------------------------------
-GEN="Unix Makefiles"; command -v ninja >/dev/null 2>&1 && GEN=Ninja
 rm -rf build dist
-cmake -S . -B build -G "$GEN" -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH="$QT_ROOT" -DCMAKE_INSTALL_PREFIX="$ROOT/dist" >/dev/null
-cmake --build build --parallel "$(nproc)"
-cmake --install build >/dev/null
-[ -x dist/bin/HeadlessQtApp ] || fail "dist/bin/HeadlessQtApp was not produced"
-log "built dist/bin/HeadlessQtApp"
+if [ $COMPILE = 1 ]; then
+    GEN="Unix Makefiles"; command -v ninja >/dev/null 2>&1 && GEN=Ninja
+    cmake -S . -B build -G "$GEN" -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="$QT_ROOT" -DCMAKE_INSTALL_PREFIX="$ROOT/dist" >/dev/null
+    cmake --build build --parallel "$(nproc)"
+    cmake --install build >/dev/null
+    [ -x dist/bin/HeadlessQtApp ] || fail "dist/bin/HeadlessQtApp was not produced"
+    log "built dist/bin/HeadlessQtApp"
+else
+    mkdir -p dist/bin && install -m 0755 support/prebuilt/HeadlessQtApp dist/bin/HeadlessQtApp
+    log "using prebuilt dist/bin/HeadlessQtApp"
+fi
 
 # --- lay out the tree --------------------------------------------------------------------------
 rm -rf bin plugins libs
@@ -70,7 +92,7 @@ for f in "$QT_ROOT"/plugins/imageformats/*.so; do [ -f "$f" ] && install -m 0755
 # Qt libraries: real files named by SONAME (no symlinks, survives SMB shares)
 for f in "$QT_ROOT"/lib/libQt6*.so.6; do
     real="$(readlink -f "$f")"
-    soname="$(readelf -d "$real" | sed -n 's/.*(SONAME) *Library soname: \[\(.*\)\]/\1/p' | sed -n '1p')"
+    soname="$("$PATCHELF" --print-soname "$real" 2>/dev/null || basename "$f")"
     install -m 0755 "$real" "$LIB/${soname:-$(basename "$f")}"
 done
 # non-Qt runtime libraries (ICU, glib2, pcre, zstd, X11/xcb/xkbcommon, libstdc++, libgcc_s 9.0 GA)
@@ -80,11 +102,11 @@ for f in support/runtime-libs/lib64/*; do install -m 0755 "$f" "$LIB/$(basename 
 "$PATCHELF" --force-rpath --set-rpath '$ORIGIN/../libs/lib64' bin/HeadlessQtApp*
 for f in plugins/*/*.so; do "$PATCHELF" --force-rpath --set-rpath '$ORIGIN/../../libs/lib64' "$f"; done
 for f in "$LIB"/*.so*; do "$PATCHELF" --force-rpath --set-rpath '$ORIGIN' "$f"; done
-strip --strip-unneeded bin/HeadlessQtApp* plugins/*/*.so "$LIB"/libQt6*.so.6
+[ $HAVE_BINUTILS = 1 ] && strip --strip-unneeded bin/HeadlessQtApp* plugins/*/*.so "$LIB"/libQt6*.so.6
 
 # --- checks ---------------------------------------------------------------------------------------
 bad=0
-for f in bin/HeadlessQtApp* plugins/*/*.so "$LIB"/*.so*; do
+[ $HAVE_BINUTILS = 1 ] && for f in bin/HeadlessQtApp* plugins/*/*.so "$LIB"/*.so*; do
     need="$( (readelf -V "$f" 2>/dev/null || true) | (grep -oE 'GLIBC_2\.[0-9]+' || true) | sort -t. -k2 -n -u | tail -n1 | sed 's/GLIBC_//')"
     [ -n "$need" ] || continue
     if [ "$(printf '%s\n%s\n' "$GLIBC_MAX" "$need" | sort -t. -k2 -n | tail -n1)" != "$GLIBC_MAX" ]; then
@@ -98,12 +120,12 @@ for f in bin/HeadlessQtApp plugins/*/*.so "$LIB"/*.so*; do
     fi
 done
 [ $bad = 0 ] || fail "unresolved libraries"
-readelf -d bin/HeadlessQtApp | grep -q '(RPATH).*\$ORIGIN/../libs/lib64' || fail "RPATH not set on bin/HeadlessQtApp"
+"$PATCHELF" --print-rpath bin/HeadlessQtApp | grep -q '^\$ORIGIN/../libs/lib64$' || fail "RPATH not set on bin/HeadlessQtApp"
 find bin plugins libs -type l | grep -q . && fail "symlinks in the tree"
 
 {
     echo "HeadlessQtApp runtime manifest (built by build.sh)"
-    echo "built: $(date -u +'%Y-%m-%dT%H:%M:%SZ') on $(cat /etc/redhat-release 2>/dev/null || uname -a), $(g++ --version | head -n1)"
+    echo "built: $(date -u +'%Y-%m-%dT%H:%M:%SZ') on $(cat /etc/redhat-release 2>/dev/null || uname -a), $( [ $COMPILE = 1 ] && g++ --version | head -n1 || echo 'prebuilt binary from support/prebuilt')"
     echo "Qt: $(grep -a -o -m1 'Qt [0-9]*\.[0-9]*\.[0-9]* ([^)]*)' "$LIB/libQt6Core.so.6") (from qt/6.8.0/gcc_64)"
     echo "glibc requirement: every file needs at most GLIBC_$GLIBC_MAX (RHEL 9.0 GA and later)"
     echo; echo "non-Qt libraries (from support/runtime-libs, origins):"; cat support/runtime-libs/ORIGINS.txt
