@@ -88,6 +88,13 @@ target_link_options(HeadlessQtApp PRIVATE
 target_link_libraries(HeadlessQtApp PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Concurrent Qt6::PrintSupport)
 
+# When building from the "build" branch on a machine without ICU/xcb/xkbcommon installed,
+# let the linker find the Qt libraries' own dependencies in the bundled runtime libraries.
+if(EXISTS "${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
+    target_link_options(HeadlessQtApp PRIVATE
+        "LINKER:-rpath-link,${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
+endif()
+
 # Relative runtime search path: <pkg>/bin/HeadlessQtApp -> <pkg>/libs/lib64
 set_target_properties(HeadlessQtApp PROPERTIES
     INSTALL_RPATH "$ORIGIN/../libs/lib64"
