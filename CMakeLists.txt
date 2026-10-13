@@ -97,4 +97,4 @@ set_target_properties(HeadlessQtApp PROPERTIES
 
 install(TARGETS HeadlessQtApp RUNTIME DESTINATION bin)
 # qt.conf next to the binary makes Qt find <pkg>/plugins and <pkg>/libs/lib64/fonts.
-install(FILES tools/packaging/qt.conf DESTINATION bin)
+install(FILES support/qt.conf DESTINATION bin)

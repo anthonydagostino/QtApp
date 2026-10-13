@@ -1,133 +1,74 @@
-# HeadlessQtApp
+# HeadlessQtApp — build branch
 
-A minimal Qt 6.8.0 anchor process for **Squish for Qt 8.1.0** on **RHEL 9 x86_64**. It has
-no GUI and creates no window. Its only job is to be the AUT that Squish attaches to on a
-machine where nothing can be installed, so that Squish can take desktop screenshots of
-that machine's own display and do image-based interaction on it.
+This branch builds the `HeadlessQtApp` tree from source on **RHEL 9 (tested with the 9.8
+toolchain)**. The ready-built tree is on branch `claude/new-session-6jr4li`; this branch
+produces the same thing and contains everything needed to do so, except the compiler
+toolchain from the RHEL repositories.
+
+```bash
+sudo dnf install gcc-c++ cmake make binutils     # the only packages needed
+git clone -b build <repo-url> HeadlessQtApp
+cd HeadlessQtApp
+./build.sh
+```
+
+Result: `bin/`, `plugins/` and `libs/lib64/` in this directory, the deployable tree. Copy
+those three folders to the share and start it with Squish:
 
 ```bash
 /mnt/share/squish/bin/startaut --port=4322 /mnt/share/HeadlessQtApp/bin/HeadlessQtApp
 ```
 
-The whole application (`main.cpp`):
+## What is in this branch
 
-- connects to the machine's X display through Qt's xcb platform plugin (`DISPLAY`,
-  default `:0`),
-- prints one line (`HeadlessQtApp pid=... qt=6.8.0 platform=xcb display=:0 screen=... WxH`,
-  with the name it was started as),
-- runs the Qt event loop until it is killed. No window, no widgets.
+| Path | Content |
+| --- | --- |
+| `main.cpp`, `CMakeLists.txt` | the application (QGuiApplication on xcb, no window; see below) |
+| `build.sh` | builds the app and lays out the tree; checks the Qt SDK and the result |
+| `qt/6.8.0/gcc_64/` | the Qt 6.8.0 SDK: headers, libraries, CMake files, `moc`/`rcc`/`uic`, plugins (72 MB) |
+| `support/runtime-libs/lib64/` | the non-Qt libraries shipped in `libs/lib64` (ICU 67, glib2, pcre, zstd, X11/xcb/xkbcommon, libstdc++, `libgcc_s` from RHEL 9.0 GA); `ORIGINS.txt` names the RPMs |
+| `support/patchelf` | patchelf 0.15 (EPEL build; not in the RHEL repositories), used to set RPATHs |
+| `support/qt.conf` | copied next to the binary so Qt finds `plugins/` |
 
-`bin/` contains six byte-identical copies of the binary, `HeadlessQtApp` and
-`HeadlessQtApp2` … `HeadlessQtApp6`, so that up to six anchors can be registered as
-separate AUTs and attached to independently (each on its own `startaut` port). Any further
-copy under any name in `bin/` works the same way, since everything is found relative to the
-binary's own directory.
+No network is needed by `build.sh`. No container is involved.
 
-Squish's desktop screenshot grabs the primary `QScreen`, which here is the real X display,
-so the screenshot shows whatever is on the VM's screen, not the anchor (which has nothing
-to show).
+## What build.sh does
 
-## Layout (this folder is what goes on the share)
+1. Checks for `cmake`, `g++`, `make`, `readelf`, `strip`, `ldd`.
+2. Verifies the Qt SDK is exactly 6.8.0 and that its `libQt6Core.so.6` exports the
+   `Qt_6_PRIVATE_API` and `Qt_6.8` symbol versions (what Squish for Qt 8.1.0, built with
+   Qt 6.8.0, requires). `CMakeLists.txt` checks the same at configure time.
+3. `cmake` configure/build/install into `build/` and `dist/`.
+4. Lays out the tree: six byte-identical copies of the binary (`HeadlessQtApp`,
+   `HeadlessQtApp2` … `HeadlessQtApp6`), `qt.conf`, the xcb/offscreen/minimal platform
+   plugins and image-format plugins, every Qt library under its SONAME as a real file, the
+   runtime libraries from `support/runtime-libs`. No symlinks.
+5. Sets `DT_RPATH` with `patchelf` (`$ORIGIN/../libs/lib64` on the binaries,
+   `$ORIGIN/../../libs/lib64` on the plugins, `$ORIGIN` on the libraries) and strips.
+6. Checks: no file needs a glibc symbol newer than `GLIBC_2.34` (so the tree runs on every
+   RHEL 9.x), every file resolves with `ldd` without `LD_LIBRARY_PATH`, RPATH set; then a
+   smoke test (starts on the offscreen platform, prints its line, stops on SIGTERM).
 
-```
-HeadlessQtApp/
-├── bin/
-│   ├── HeadlessQtApp            ELF x86_64, DT_RPATH $ORIGIN/../libs/lib64
-│   ├── HeadlessQtApp2 … HeadlessQtApp6   five identical copies (separate AUTs for Squish)
-│   └── qt.conf                  tells Qt where plugins/ is
-├── plugins/
-│   ├── platforms/libqxcb.so  libqoffscreen.so  libqminimal.so
-│   └── imageformats/*.so
-├── libs/lib64/                  EVERY shared library except glibc, under its SONAME:
-│   ├── libQt6Core.so.6  libQt6Gui.so.6  libQt6Widgets.so.6  libQt6Network.so.6
-│   ├── libQt6Xml.so.6  libQt6Concurrent.so.6  libQt6PrintSupport.so.6  libQt6XcbQpa.so.6
-│   ├── libicui18n.so.67  libicuuc.so.67  libicudata.so.67  libzstd.so.1
-│   ├── libglib-2.0.so.0  libgthread-2.0.so.0  libpcre.so.1
-│   ├── libstdc++.so.6  libgcc_s.so.1
-│   ├── libxcb*.so  libX11.so.6  libX11-xcb.so.1  libXau.so.6  libxkbcommon*.so
-│   └── MANIFEST.txt             where every file came from
-├── main.cpp, CMakeLists.txt     the application source
-└── README.md
-```
+## The application
 
-No scripts, no symlinks (survives an SMB share), nothing to install, no environment
-variables needed. The only things used from the machine are the kernel, glibc and the X
-server. Nothing in the tree needs more than `GLIBC_2.34`, so it runs on every RHEL 9
-release from 9.0 GA on. The binary links every shipped Qt module and carries a `DT_RPATH`
-that is inherited by everything loaded into the process, so the Squish wrapper that
-`startaut` preloads resolves its Qt 6.8.0 libraries from `libs/lib64` without
-`LD_LIBRARY_PATH`. **Do not set `LD_LIBRARY_PATH`**: it is not needed and would make
-Squish's own binaries load libraries from this tree.
+`main.cpp`: a `QGuiApplication` on Qt's xcb platform that connects to the machine's own X
+display (`DISPLAY`, default `:0`), prints one line
+(`HeadlessQtApp pid=... qt=6.8.0 platform=xcb display=:0 screen=... WxH`, with the name it
+was started as) and runs the event loop until it is killed. No window. Squish attaches to it
+with `startaut`; its desktop screenshots then show the real display.
 
-The share must be mounted so that files on it are executable (not `noexec`, executable
-bit visible): `startaut` executes `bin/HeadlessQtApp` directly.
+Environment it reacts to: `DISPLAY` (default `:0`), `XAUTHORITY` (if the X server needs a
+cookie), `QT_QPA_PLATFORM=offscreen` (no display at all). Do not set `LD_LIBRARY_PATH`.
 
-## Environment it reacts to
+## Notes
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `DISPLAY` | `:0` | the X display to attach to (the VM's own screen) |
-| `XAUTHORITY` | unset | cookie file, if the X server requires authorization |
-| `QT_QPA_PLATFORM` | `xcb` | `offscreen` runs it with no display at all (nothing to screenshot) |
-
-If the output says `qt.qpa.xcb: could not connect to display :0`, the custom UI on the VM
-is either on another display number, requires an X cookie (`XAUTHORITY`), or is not an X
-server at all (framebuffer/DRM/Wayland). In the last case Qt cannot grab that screen and
-Squish's desktop screenshots cannot show it; the anchor can still run with
-`QT_QPA_PLATFORM=offscreen`.
-
-## Checking by hand on the VM
-
-```bash
-cd /mnt/share/HeadlessQtApp
-bin/HeadlessQtApp            # prints the startup line with the screen size; Ctrl-C to stop
-ldd bin/HeadlessQtApp        # everything from libs/lib64 except glibc
-readelf --version-info libs/lib64/libQt6Core.so.6 | grep -E 'Qt_6.8|Qt_6_PRIVATE_API'
-```
-
-## Rebuilding
-
-Only `main.cpp` and `CMakeLists.txt` are needed; the tooling that produced the binaries
-(a RHEL 9 container with the Qt 6.8.0 SDK) is not part of this repository. In any RHEL 9
-environment with a Qt 6.8.0 `gcc_64` SDK and `cmake`/`g++`:
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.0/gcc_64 -DCMAKE_INSTALL_PREFIX="$PWD/dist"
-cmake --build build --parallel && cmake --install build      # -> dist/bin/HeadlessQtApp
-```
-
-Configure stops if the SDK is not exactly 6.8.0 or its `libQt6Core.so.6` lacks
-`Qt_6_PRIVATE_API`. Copy the binary to `bin/`, keep `bin/qt.conf`, and lay out the Qt
-libraries and plugins as above (real files named by SONAME; RPATH `$ORIGIN` on the
-libraries, `$ORIGIN/../../libs/lib64` on the plugins, `$ORIGIN/../libs/lib64` on the binary).
-
-## What was built and tested
-
-- **Qt 6.8.0** (what Squish for Qt 8.1.0 was built with, per its own startup message) was
-  built from the `qtbase` **v6.8.0** tag (commit `b839e9b36db3a4e50dfb34521d8ef8de1fd01969`)
-  with the RHEL 9 GCC 11.5 toolchain in an Oracle Linux 9.8 container (RHEL 9 binary
-  compatible). Modules: Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport;
-  platforms xcb, offscreen, minimal; ICU, GLib and zstd enabled; freetype/harfbuzz/png/
-  jpeg/zlib/pcre2 compiled in; no fontconfig/OpenGL/DBus. Its `libQt6Core.so.6` has the
-  same ELF version nodes (`Qt_6` … `Qt_6.8`, `Qt_6_PRIVATE_API`) as the official Qt 6.8.0
-  library (PySide6 6.8.0 wheel) and exports a strict superset of its Qt symbols.
-- ICU, glib2, zstd and the X/xcb/xkbcommon libraries are the RHEL 9 (el9) packages;
-  `libgcc_s.so.1` is the RHEL 9.0 GA build so that nothing needs `GLIBC_2.35`
-  (`_dl_find_object`, backported only in later 9.x); packaging verifies every file stays
-  within `GLIBC_2.34`.
-- Build-side validation (55 checks, including that the five copies are byte-identical): RPATH, every library/plugin resolving without
-  `LD_LIBRARY_PATH`, offscreen run, xcb run against an Xvfb (reports the display's screen,
-  no window created), stays in the event loop until SIGTERM, clean failure message without
-  an X server.
-- The tree was mounted **read-only into pristine, network-less `redhat/ubi9:9.0.0-1576`
-  (RHEL 9.0 GA, glibc 2.34-28), `redhat/ubi9` (9.8) and `redhat/ubi9-micro`** containers
-  with no X, ICU or glib installed, and the binary started directly: it attached to an X
-  server running elsewhere (`DISPLAY=127.0.0.1:97`, 1280x800), stayed running until
-  SIGTERM, and ran with `QT_QPA_PLATFORM=offscreen`; on 9.0 GA all six copies also ran
-  concurrently against that display, each reporting its own name.
-- **Not tested here**: Squish itself (not available). In your runs Squish attached to the
-  Qt 6.8.0 tree and took desktop screenshots of the display the anchor was connected to.
-  Whether image-based *clicks* reach the custom UI on the VM depends on how Squish
-  dispatches them on Linux (Qt-level events only reach the AUT's own windows); the
-  screenshots themselves are of the whole X display.
+- The Qt 6.8.0 SDK here was built from the `qtbase` v6.8.0 sources with GCC 11.5 on a
+  RHEL 9-compatible system (Core, Gui, Widgets, Network, Xml, Concurrent, PrintSupport;
+  xcb/offscreen/minimal platforms; ICU, GLib, zstd; bundled freetype/harfbuzz/png/jpeg/
+  zlib/pcre2; no OpenGL/DBus/fontconfig). Its `libQt6Core.so.6` has the same ELF version
+  nodes as the official Qt 6.8.0 library and a superset of its exported symbols.
+- The runtime libraries are the RHEL 9 (el9) packages' files, except `libgcc_s.so.1`,
+  which is the RHEL 9.0 GA build: newer builds need `_dl_find_object@GLIBC_2.35`, which
+  older RHEL 9.x do not have.
+- A binary built on RHEL 9.8 with its GCC 11.5 links against the shipped `libstdc++`
+  (GLIBCXX 3.4.29) and needs nothing newer than `GLIBC_2.34`; `build.sh` verifies this.

@@ -1,6 +1,11 @@
-# local build outputs and inputs (not part of the deployable tree)
+# build outputs of ./build.sh (the deployable tree); the shipped tree lives on the
+# claude/new-session-6jr4li branch
 /build/
 /dist/
+/bin/
+/plugins/
+/libs/
+# local-only tooling
 /qt-src/
 /qt-sdk/
 /tools/
