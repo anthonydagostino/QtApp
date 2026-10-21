@@ -6,8 +6,8 @@
 //
 //   <squish>/bin/startaut --port=4322 /path/to/HeadlessQtApp/bin/HeadlessQtApp
 //
-// bin/ holds six identical copies (HeadlessQtApp, HeadlessQtApp2 ... HeadlessQtApp6) so
-// that several anchors can be registered and attached independently.
+// bin/ holds one executable per name (HeadlessQtApp, HeadlessQtAppA1, ...), each built from
+// this file with HEADLESSQTAPP_NAME set, so several anchors can be attached independently.
 //
 // Overrides: DISPLAY=:N (which display), XAUTHORITY=<cookie file> (if the X server needs
 // one), QT_QPA_PLATFORM=offscreen (run with no display at all; nothing to screenshot then).
@@ -19,6 +19,10 @@
 #include <cstdio>
 #include <unistd.h>
 
+#ifndef HEADLESSQTAPP_NAME
+#define HEADLESSQTAPP_NAME "HeadlessQtApp"   // set per executable by CMakeLists.txt
+#endif
+
 int main(int argc, char *argv[])
 {
     if (qEnvironmentVariableIsEmpty("DISPLAY"))
@@ -29,12 +33,12 @@ int main(int argc, char *argv[])
         qputenv("LANG", QByteArrayLiteral("C.UTF-8")); // Qt wants UTF-8; glibc has this built in
 
     QGuiApplication app(argc, argv);
+    QCoreApplication::setApplicationName(QStringLiteral(HEADLESSQTAPP_NAME));
 
     const QScreen *screen = QGuiApplication::primaryScreen();
-    // The same binary is shipped under several names (bin/HeadlessQtApp, HeadlessQtApp2, ...);
-    // print the name it was started as so instances can be told apart.
+    // Each executable is built with its own name (HeadlessQtApp, HeadlessQtAppA1, ...).
     std::printf("%s pid=%ld qt=%s platform=%s display=%s screen=%s %dx%d\n",
-                qPrintable(QCoreApplication::applicationName()),
+                HEADLESSQTAPP_NAME,
                 static_cast<long>(::getpid()), qVersion(),
                 qPrintable(QGuiApplication::platformName()), qgetenv("DISPLAY").constData(),
                 screen ? qPrintable(screen->name()) : "none",

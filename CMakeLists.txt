@@ -69,39 +69,53 @@ else()
     message(WARNING "readelf not found; Qt_6_PRIVATE_API check skipped at configure time.")
 endif()
 
-qt_add_executable(HeadlessQtApp
-    main.cpp)
+# One executable per name, each built from main.cpp with its name compiled in. Squish finds
+# the AUT process by its process name, which Linux truncates to 15 characters, so every
+# name must be 15 characters or fewer.
+set(HEADLESSQTAPP_NAMES "HeadlessQtApp;HeadlessQtAppA1;HeadlessQtAppA2;HeadlessQtAppAb;HeadlessQtAppRo;HeadlessQtAppPr"
+    CACHE STRING "Semicolon-separated names of the executables to build")
 
-target_compile_definitions(HeadlessQtApp PRIVATE
-    HEADLESSQTAPP_VERSION="${PROJECT_VERSION}"
-    QT_NO_CAST_FROM_ASCII
-    QT_NO_CAST_TO_ASCII)
+foreach(name IN LISTS HEADLESSQTAPP_NAMES)
+    string(LENGTH "${name}" _len)
+    if(_len GREATER 15)
+        message(FATAL_ERROR "executable name '${name}' is ${_len} characters; the limit is 15 (Linux process name), or Squish cannot attach to it")
+    endif()
 
-target_compile_options(HeadlessQtApp PRIVATE -Wall -Wextra)
+    qt_add_executable(${name} main.cpp)
 
-target_link_options(HeadlessQtApp PRIVATE
-    "LINKER:--no-as-needed"
-    # DT_RPATH (not DT_RUNPATH): it is inherited by every library loaded into the
-    # process, so Squish's preloaded wrapper and dlopen'ed plugins resolve their Qt
-    # dependencies from <pkg>/libs/lib64 as well.
-    "LINKER:--disable-new-dtags")
-target_link_libraries(HeadlessQtApp PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Concurrent Qt6::PrintSupport)
+    target_compile_definitions(${name} PRIVATE
+        HEADLESSQTAPP_NAME="${name}"
+        HEADLESSQTAPP_VERSION="${PROJECT_VERSION}"
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII)
 
-# When building from the "build" branch on a machine without ICU/xcb/xkbcommon installed,
-# let the linker find the Qt libraries' own dependencies in the bundled runtime libraries.
-if(EXISTS "${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
-    target_link_options(HeadlessQtApp PRIVATE
-        "LINKER:-rpath-link,${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
-endif()
+    target_compile_options(${name} PRIVATE -Wall -Wextra)
 
-# Relative runtime search path: <pkg>/bin/HeadlessQtApp -> <pkg>/libs/lib64
-set_target_properties(HeadlessQtApp PROPERTIES
-    INSTALL_RPATH "$ORIGIN/../libs/lib64"
-    INSTALL_RPATH_USE_LINK_PATH OFF
-    BUILD_WITH_INSTALL_RPATH OFF
-    SKIP_BUILD_RPATH OFF)
+    target_link_options(${name} PRIVATE
+        "LINKER:--no-as-needed"
+        # DT_RPATH (not DT_RUNPATH): it is inherited by every library loaded into the
+        # process, so Squish's preloaded wrapper and dlopen'ed plugins resolve their Qt
+        # dependencies from <pkg>/libs/lib64 as well.
+        "LINKER:--disable-new-dtags")
+    target_link_libraries(${name} PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Concurrent Qt6::PrintSupport)
 
-install(TARGETS HeadlessQtApp RUNTIME DESTINATION bin)
-# qt.conf next to the binary makes Qt find <pkg>/plugins and <pkg>/libs/lib64/fonts.
+    # When building on a machine without ICU/xcb/xkbcommon installed, let the linker find
+    # the Qt libraries' own dependencies in the bundled runtime libraries.
+    if(EXISTS "${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
+        target_link_options(${name} PRIVATE
+            "LINKER:-rpath-link,${CMAKE_SOURCE_DIR}/support/runtime-libs/lib64")
+    endif()
+
+    # Relative runtime search path: <pkg>/bin/<name> -> <pkg>/libs/lib64
+    set_target_properties(${name} PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../libs/lib64"
+        INSTALL_RPATH_USE_LINK_PATH OFF
+        BUILD_WITH_INSTALL_RPATH OFF
+        SKIP_BUILD_RPATH OFF)
+
+    install(TARGETS ${name} RUNTIME DESTINATION bin)
+endforeach()
+
+# qt.conf next to the binaries makes Qt find <pkg>/plugins.
 install(FILES support/qt.conf DESTINATION bin)

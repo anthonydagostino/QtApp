@@ -24,8 +24,8 @@ PATCHELF="$ROOT/support/patchelf"
 LIB="libs/lib64"
 GLIBC_MAX="2.34"            # RHEL 9.0 GA baseline: the tree must run on every RHEL 9.x
 
-# Names of the executables to put in bin/ (all byte-identical copies of the same binary).
-# Edit this list to name them as you like; each one is a separate AUT for Squish.
+# Names of the executables to build into bin/. Each one is compiled separately from
+# main.cpp with its name baked in; each is a separate AUT for Squish.
 # Keep every name at 15 characters or fewer: Linux truncates the process name to 15 and
 # Squish finds the AUT process by that name (a longer name runs but cannot be attached to).
 APP_NAMES=(HeadlessQtApp HeadlessQtAppA1 HeadlessQtAppA2 HeadlessQtAppAb HeadlessQtAppRo HeadlessQtAppPr)
@@ -47,9 +47,10 @@ command -v ldd >/dev/null 2>&1 || fail "ldd (glibc) not found"
 if [ $COMPILE = 1 ]; then
     log "toolchain: $(g++ --version | head -n1); $(cmake --version | head -n1); $(cat /etc/redhat-release 2>/dev/null || true)"
 else
-    [ -x support/prebuilt/HeadlessQtApp ] || chmod +x support/prebuilt/HeadlessQtApp 2>/dev/null || true
-    [ -f support/prebuilt/HeadlessQtApp ] || fail "no compiler (cmake/g++/make) and no support/prebuilt/HeadlessQtApp -> sudo dnf install gcc-c++ cmake make binutils"
-    log "WARNING: cmake/g++/make not found -> using the prebuilt binary support/prebuilt/HeadlessQtApp (built from this main.cpp); install gcc-c++ cmake make to compile it yourself"
+    for name in "${APP_NAMES[@]}"; do
+        [ -f "support/prebuilt/$name" ] || fail "no compiler (cmake/g++/make) and no support/prebuilt/$name -> sudo dnf install gcc-c++ cmake make binutils"
+    done
+    log "WARNING: cmake/g++/make not found -> using the prebuilt binaries in support/prebuilt/ (built from this main.cpp); install gcc-c++ cmake make to compile them yourself"
 fi
 [ $HAVE_BINUTILS = 1 ] || log "WARNING: binutils (readelf/strip) not found -> binaries are not stripped and the symbol-version checks are skipped"
 
@@ -72,21 +73,24 @@ log "Qt SDK: $SDK_VERSION, Qt_6_PRIVATE_API and Qt_6.8 present"
 rm -rf build dist
 if [ $COMPILE = 1 ]; then
     GEN="Unix Makefiles"; command -v ninja >/dev/null 2>&1 && GEN=Ninja
+    NAMES_CMAKE="$(IFS=';'; echo "${APP_NAMES[*]}")"
     cmake -S . -B build -G "$GEN" -DCMAKE_BUILD_TYPE=Release \
+          -DHEADLESSQTAPP_NAMES="$NAMES_CMAKE" \
           -DCMAKE_PREFIX_PATH="$QT_ROOT" -DCMAKE_INSTALL_PREFIX="$ROOT/dist" >/dev/null
     cmake --build build --parallel "$(nproc)"
     cmake --install build >/dev/null
-    [ -x dist/bin/HeadlessQtApp ] || fail "dist/bin/HeadlessQtApp was not produced"
-    log "built dist/bin/HeadlessQtApp"
+    for name in "${APP_NAMES[@]}"; do [ -x "dist/bin/$name" ] || fail "dist/bin/$name was not produced"; done
+    log "built: ${APP_NAMES[*]}"
 else
-    mkdir -p dist/bin && install -m 0755 support/prebuilt/HeadlessQtApp dist/bin/HeadlessQtApp
-    log "using prebuilt dist/bin/HeadlessQtApp"
+    mkdir -p dist/bin
+    for name in "${APP_NAMES[@]}"; do install -m 0755 "support/prebuilt/$name" "dist/bin/$name"; done
+    log "using prebuilt binaries: ${APP_NAMES[*]}"
 fi
 
 # --- lay out the tree --------------------------------------------------------------------------
 rm -rf bin plugins libs
 mkdir -p bin plugins/platforms plugins/imageformats "$LIB"
-for name in "${APP_NAMES[@]}"; do install -m 0755 dist/bin/HeadlessQtApp "bin/$name"; done
+for name in "${APP_NAMES[@]}"; do install -m 0755 "dist/bin/$name" "bin/$name"; done
 install -m 0644 support/qt.conf bin/qt.conf
 FIRST="bin/${APP_NAMES[0]}"
 
@@ -132,7 +136,7 @@ done
 find bin plugins libs -type l | grep -q . && fail "symlinks in the tree"
 
 {
-    echo "HeadlessQtApp runtime manifest (built by build.sh)"
+    echo "HeadlessQtApp runtime manifest (built by build.sh); executables: ${APP_NAMES[*]}"
     echo "built: $(date -u +'%Y-%m-%dT%H:%M:%SZ') on $(cat /etc/redhat-release 2>/dev/null || uname -a), $( [ $COMPILE = 1 ] && g++ --version | head -n1 || echo 'prebuilt binary from support/prebuilt')"
     echo "Qt: $(grep -a -o -m1 'Qt [0-9]*\.[0-9]*\.[0-9]* ([^)]*)' "$LIB/libQt6Core.so.6") (from qt/6.8.0/gcc_64)"
     echo "glibc requirement: every file needs at most GLIBC_$GLIBC_MAX (RHEL 9.0 GA and later)"
