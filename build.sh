@@ -26,7 +26,9 @@ GLIBC_MAX="2.34"            # RHEL 9.0 GA baseline: the tree must run on every R
 
 # Names of the executables to put in bin/ (all byte-identical copies of the same binary).
 # Edit this list to name them as you like; each one is a separate AUT for Squish.
-APP_NAMES=(HeadlessQtApp HeadlessQtApp2 HeadlessQtApp3 HeadlessQtApp4 HeadlessQtApp5 HeadlessQtApp6)
+# Keep every name at 15 characters or fewer: Linux truncates the process name to 15 and
+# Squish finds the AUT process by that name (a longer name runs but cannot be attached to).
+APP_NAMES=(HeadlessQtApp HeadlessQtAppA1 HeadlessQtAppA2 HeadlessQtAppAb HeadlessQtAppRo HeadlessQtAppPr)
 
 log()  { echo "[build] $*"; }
 fail() { echo "[build] ERROR: $*" >&2; exit 1; }

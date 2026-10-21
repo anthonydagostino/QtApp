@@ -52,11 +52,14 @@ No network is needed by `build.sh`. No container is involved.
 The names of the six executables are one list near the top of `build.sh`:
 
 ```bash
-APP_NAMES=(HeadlessQtApp HeadlessQtApp2 HeadlessQtApp3 HeadlessQtApp4 HeadlessQtApp5 HeadlessQtApp6)
+APP_NAMES=(HeadlessQtApp HeadlessQtAppA1 HeadlessQtAppA2 HeadlessQtAppAb HeadlessQtAppRo HeadlessQtAppPr)
 ```
 
 Edit it (any names, any count) and run `./build.sh` again. All of them are byte-identical
-copies of the same binary; each prints the name it was started as.
+copies of the same binary; each prints the name it was started as. **Keep every name at
+15 characters or fewer**: Linux truncates the process name (`ps`, `/proc/<pid>/comm`) to
+15 characters and Squish looks the AUT process up by that name, so a longer name runs but
+cannot be attached to.
 
 ## What build.sh does
 
