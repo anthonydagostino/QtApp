@@ -17,11 +17,14 @@ The whole application (`main.cpp`):
   with the name it was started as),
 - runs the Qt event loop until it is killed. No window, no widgets.
 
-`bin/` contains six byte-identical copies of the binary, `HeadlessQtApp` and
-`HeadlessQtApp2` … `HeadlessQtApp6`, so that up to six anchors can be registered as
-separate AUTs and attached to independently (each on its own `startaut` port). Any further
-copy under any name in `bin/` works the same way, since everything is found relative to the
-binary's own directory.
+`bin/` contains six byte-identical copies of the binary: `HeadlessQtApp`,
+`HeadlessQtAppA1`, `HeadlessQtAppA2`, `HeadlessQtAppAb`, `HeadlessQtAppRo` and
+`HeadlessQtAppPr`, so that six anchors can be registered as separate attachable AUTs and
+attached to independently (each on its own `startaut` port). Any further copy under any
+name in `bin/` works the same way, since everything is found relative to the binary's own
+directory. **Keep names at 15 characters or fewer**: Linux truncates the process name
+(`ps`, `/proc/<pid>/comm`) to 15 characters, and Squish looks the AUT process up by that
+name, so a longer name runs but cannot be attached to.
 
 Squish's desktop screenshot grabs the primary `QScreen`, which here is the real X display,
 so the screenshot shows whatever is on the VM's screen, not the anchor (which has nothing
@@ -33,7 +36,7 @@ to show).
 HeadlessQtApp/
 ├── bin/
 │   ├── HeadlessQtApp            ELF x86_64, DT_RPATH $ORIGIN/../libs/lib64
-│   ├── HeadlessQtApp2 … HeadlessQtApp6   five identical copies (separate AUTs for Squish)
+│   ├── HeadlessQtAppA1 HeadlessQtAppA2 HeadlessQtAppAb HeadlessQtAppRo HeadlessQtAppPr   identical copies (separate AUTs)
 │   └── qt.conf                  tells Qt where plugins/ is
 ├── plugins/
 │   ├── platforms/libqxcb.so  libqoffscreen.so  libqminimal.so
